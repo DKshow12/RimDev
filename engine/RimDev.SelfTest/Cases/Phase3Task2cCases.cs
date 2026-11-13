@@ -316,7 +316,7 @@ public static class Phase3Task2cCases
             var r = DefScanner.ScanFile(path, "syn.t2c", dir);
             T.Null(r.ParseError, "合成文件应解析成功");
             var def = r.Defs.Single();
-            var elems = FieldNameCheck.ReadTopLevelElements(path, def.Line);
+            var elems = FieldNameCheck.ReadTopLevelElements(path, def.Line, FieldNameCheck.OrdinalWithinLine(r.Defs.ToList(), r.Defs.ToList().IndexOf(def)));
             var alpha = elems.Single(e => e.Name == "alpha");
             var beta = elems.Single(e => e.Name == "beta");
             T.Eq(alpha.IgnoreIfNoMatchingField, "True", "带属性的元素必须把属性值带出来");
@@ -325,7 +325,7 @@ public static class Phase3Task2cCases
 
             // 按文件一次读出的分组路径也必须带属性（两条入口不许分叉）
             var grouped = FieldNameCheck.ReadElementsByDef(path);
-            T.True(grouped.TryGetValue(def.Line, out var g), "按文件分组应能定位该 def");
+            T.True(grouped.TryGetValue((def.Line, FieldNameCheck.OrdinalWithinLine(r.Defs.ToList(), r.Defs.ToList().IndexOf(def))), out var g), "按文件分组应能定位该 def");
             T.Eq(g!.Single(e => e.Name == "alpha").IgnoreIfNoMatchingField, "True", "分组路径同样要带属性");
         });
 

@@ -16,6 +16,14 @@ if (args.Contains("--task5b-cases"))
     return T.Report();
 }
 
+// ★ 第 3 期 Task 5c：按需入口 `rimdev-selftest --task5c-cases`（只跑本 Task 的用例，秒级，
+//   供复审时单独复跑归属键的判别性用例；与 `--task5b-cases` 同一先例）。
+if (args.Contains("--task5c-cases"))
+{
+    Phase3Task5cCases.Run();
+    return T.Report();
+}
+
 EnvCases.Run();
 MetadataCases.Run();
 NameCases.Run();
@@ -52,5 +60,7 @@ if (args.Contains("--task4b-measure"))
 // ★ 第 3 期 Task 5a：InheritanceLayer（ParentName 解析口径 + ResolutionBasis + 补丁字面量 + RD2008）
 Phase3Task5aCases.Run();
 Phase3Task5bCases.Run();
+// ★ 第 3 期 Task 5c：FieldNameCheck 的归属键（同一物理行多 def 时各校验自己的子元素）
+Phase3Task5cCases.Run();
 
 return T.Report();

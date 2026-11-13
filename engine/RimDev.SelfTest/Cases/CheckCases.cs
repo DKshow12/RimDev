@@ -307,17 +307,66 @@ public static class CheckCases
         T.Case("★ 字段名检查：能解析 ThreatFleet 的顶层元素；坏字段 canBeDeconstructed 确实不存在", () =>
         {
             var d = tfScan.Defs.First(x => x.DefName == "TF_Wreck_OnslaughtMkI");
-            var elems = FieldNameCheck.ReadTopLevelElements(d.FileAbs, d.Line);
-            Console.WriteLine($"       [字段名] {d.DefName} 顶层元素 {elems.Count} 个 @ {Path.GetFileName(d.FileAbs)}:{d.Line}");
+            var scanned = FieldNameCheck.ScanDefs(d.FileAbs);
+            Console.WriteLine($"       [字段名] {Path.GetFileName(d.FileAbs)}：元素扫描到 {scanned.Count} 个 def"
+                + $"（其中 {scanned.Count(x => x.DefLine == d.Line)} 个在 d.Line={d.Line}）");
 
-            T.True(elems.Count > 5, $"应读到多个顶层元素，实际 {elems.Count}");
-            T.True(elems.Any(e => e.Name == "defName"), "应含 defName");
-            T.True(elems.All(e => e.Line > 0), "每个元素都应有行号");
+            // ★ 第 3 期 Task 5c：归属键 = (def 起始行, 该行上第几个 def)。
+            //   本用例**刻意不依赖任何声明的身份**（踩过两次测试侧的坑，记下来免得后人再踩）：
+            //   ① `tfScan.Defs` 里存在**字段完全相同**的两份 RawDef，而 RawDef 是 record ⇒ `List.IndexOf(d)`
+            //      按【值相等】找会命中另一行上那个值相同的声明（实测下标 230，而真身在 0 位）⇒ 行内序号算成 3 ⇒
+            //      取不到桶、读到 0 个元素；② 另起一次 `DefScanner.ScanFile` 再按 ReferenceEquals 找同样不行
+            //      —— 那是**另一遍扫描**，对象不是同一批。⇒ 改成直接与 **DOM 真值**对账（身份无关）。
+            T.True(scanned.Count > 5, $"应扫描到多个 def，实际 {scanned.Count}");
+            T.True(scanned.All(x => x.Children.Count > 0), "每个 def 都应读到一级子元素（读到 0 说明归属键取错了）");
 
-            // ★ 每个文件只读一次（修正 ⑤）的等价性：按文件一次读出与按单 def 读出必须一致
-            var byDefLine = FieldNameCheck.ReadElementsByDef(d.FileAbs);
-            T.True(byDefLine.TryGetValue(d.Line, out var grouped), "按文件分组的读取应能定位该 def");
-            T.Eq(grouped!.Count, elems.Count, "按文件一次读出的元素数应与单 def 读出的一致");
+            // ① 行内序号必须逐行从 0 连续编号（不是全 0 —— 全 0 就是「同一行多 def 共享一个桶」的旧口径）
+            foreach (var g in scanned.GroupBy(x => x.DefLine))
+                T.True(g.Select(x => x.OrdinalWithinLine).SequenceEqual(Enumerable.Range(0, g.Count())),
+                    $"line {g.Key} 上的行内序号必须是 0..N-1（实际 [{string.Join(",", g.Select(x => x.OrdinalWithinLine))}]）");
+
+            // ② 桶的键集合与扫描到的 def 一一对应，且**越界序号取不到**（不许静默落到邻居）
+            var buckets = FieldNameCheck.ReadElementsByDef(d.FileAbs);
+            T.Eq(buckets.Count, scanned.Count, "桶数必须等于 def 数（每个 def 恰好一个桶）");
+            foreach (var s in scanned)
+                T.True(buckets.ContainsKey((s.DefLine, s.OrdinalWithinLine)), $"桶必须存在 (line={s.DefLine}, ord={s.OrdinalWithinLine})");
+            foreach (var g in scanned.GroupBy(x => x.DefLine))
+                T.False(buckets.ContainsKey((g.Key, g.Count())), $"越界序号 (line={g.Key}, ord={g.Count()}) 必须不存在");
+
+            // ③ ★★ 与 DOM 真值对账：逐个 def 的直接子元素必须与它自己那份完全一致（归属正确 = 不多不少）
+            var dom = new System.Xml.XmlDocument();
+            dom.Load(d.FileAbs);
+            var domDefs = dom.DocumentElement!.ChildNodes.OfType<System.Xml.XmlElement>().ToList();
+            T.Eq(scanned.Count, domDefs.Count, "元素扫描的 def 数必须等于 DOM 的 depth-1 元素数");
+            int domMismatch = 0, domChildren = 0;
+            for (int i = 0; i < domDefs.Count; i++)
+            {
+                var want = domDefs[i].ChildNodes.OfType<System.Xml.XmlElement>().Select(x => x.Name).ToList();
+                var got = scanned[i].Children.Select(x => x.Name).ToList();
+                domChildren += want.Count;
+                if (!want.SequenceEqual(got))
+                {
+                    domMismatch++;
+                    if (domMismatch <= 3)
+                        Console.WriteLine($"         [DOM 不符] #{i} <{domDefs[i].Name}> dom=[{string.Join("/", want)}] scan=[{string.Join("/", got)}]");
+                }
+            }
+            Console.WriteLine($"       [DOM 对账] defs={domDefs.Count} 一级子元素合计={domChildren} 不符={domMismatch}");
+            T.Eq(domMismatch, 0, "★ 每个 def 的扫描子元素必须与 DOM 真值逐个一致（这同时钉死「不是并集」与「不是整段偏移」）");
+
+            // ④ d 自己那一行必须读到子元素（旧口径在这里要么读到并集、要么读到邻居的空桶）
+            var dLineBuckets = buckets.Where(kv => kv.Key.Line == d.Line).ToList();
+            T.True(dLineBuckets.Count > 0, $"d.Line={d.Line} 上必须有桶");
+            T.True(dLineBuckets.All(kv => kv.Value.Count > 0), "该行的每个桶都必须有子元素");
+
+            // ⑤ 两条入口必须一致：ReadTopLevelElements(line, ordinal) 与 ReadElementsByDef 的同一个桶
+            foreach (var s in scanned.Where(x => x.DefLine == d.Line))
+            {
+                var oneShot = FieldNameCheck.ReadTopLevelElements(d.FileAbs, s.DefLine, s.OrdinalWithinLine);
+                T.Eq(oneShot.Count, s.Children.Count,
+                    $"ReadTopLevelElements(line={s.DefLine}, ord={s.OrdinalWithinLine}) 的元素数必须等于该桶的元素数");
+            }
+
 
             var members = ManagedAssemblyCatalog.Load(env.ManagedDir).MembersOf("ThingDef")!;
             T.Null(members.FindField("canBeDeconstructed"), "ThingDef 不应有 canBeDeconstructed");

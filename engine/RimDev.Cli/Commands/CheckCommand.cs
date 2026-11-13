@@ -123,7 +123,12 @@ public static class CheckCommand
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var files = DefScanner.CollectFiles(
             mods.Select(m => (m.PackageId, m.RootPath, (IReadOnlyList<string>)m.LoadFolders)));
-        var scan = DefScanner.Scan(files);
+        // ★ Task 14：把全限定元素名（如 AlienRace.ThingDef_AlienRace）归一化成其 Def 基类。
+        //   不归一化的后果实测：PawnKindDef.race 对 BANW_KivotosStudent 报 151 条悬空（全是假阳）。
+        //   只读元数据，不加载程序集（零崩溃风险）。
+        var resolver = XmlElementTypeResolver.CreateFromCatalog(
+            Path.Combine(env.ManagedDir, "Assembly-CSharp.dll"), mods);
+        var scan = DefScanner.Scan(files, resolver: resolver);
         var idx = DefIndex.Build(scan.Defs);
         var ctx = new CheckContext(idx, scan.Files, cat, scan.Defs, targetFilter,
             LoadOrder: loadOrder, ModRank: loadOrder.RankFor(mods),

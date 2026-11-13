@@ -41,8 +41,21 @@ public static class DefScanner
     /// <summary>★ Task 8 Step 3：最近一次 `Scan` 实际跑起来的线程数（诊断：并行是否真的发生）。</summary>
     public static int LastThreadsUsed { get; private set; }
 
+    /// <summary>
+    /// ★ Task 13：最近一次 `Scan` 里**被归一化的 def 数**（元素名含点且成功找到 Def 基类）。
+    /// 没有它，「RD3001 变少了」无法与「归一化生效」区分。
+    /// </summary>
+    public static int LastResolvedElementNames { get; private set; }
+
+    /// <summary>
+    /// ★ Task 13：扫描 def 文件。
+    /// <paramref name="resolver"/> 非 null 时会把**全限定元素名**归一化成其 Def 基类名
+    /// （如 <c>AlienRace.ThingDef_AlienRace</c> → <c>ThingDef</c>）。
+    /// 默认 null = 保持修前行为（元素名原样当 DefType），便于 A/B 对照与向后兼容。
+    /// </summary>
     public static ScanResult Scan(IEnumerable<(string FileAbs, string ModPackageId, string ModRoot)> files,
-        int parallelism = 0)
+        int parallelism = 0,
+        XmlElementTypeResolver? resolver = null)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var list = files as IList<(string FileAbs, string ModPackageId, string ModRoot)> ?? files.ToList();
@@ -77,6 +90,25 @@ public static class DefScanner
             results.Add(r);
             if (r.ParseError is not null) failed++;
             allDefs.AddRange(r.Defs);
+        }
+
+        // ★ Task 13：归一化全限定元素名。
+        //   放在此处（而不是 ScanFile 内）的理由：归一化是一次**全局映射**，
+        //   与文件无关；放在这里可以一次遍历、且不影响 ScanFile 的并行性。
+        if (resolver is not null)
+        {
+            var resolvedAt = 0;
+            for (var i = 0; i < allDefs.Count; i++)
+            {
+                var d = allDefs[i];
+                if (!d.DefType.Contains('.')) continue;          // 快路径：不含点的元素名不可能是全限定类型
+                var norm = resolver.Normalize(d.DefType);
+                if (string.Equals(norm, d.DefType, StringComparison.Ordinal)) continue;   // 未归并
+                // record 的 with 表达式：保留其他字段不变
+                allDefs[i] = d with { DefType = norm };
+                resolvedAt++;
+            }
+            LastResolvedElementNames = resolvedAt;
         }
 
         sw.Stop();

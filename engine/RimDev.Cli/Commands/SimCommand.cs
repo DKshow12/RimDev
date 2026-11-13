@@ -102,7 +102,10 @@ public static class SimCommand
 
         // ── 阶段 2：解析（def 头） ───────────────────────────────────────────────────
         var tParse = System.Diagnostics.Stopwatch.StartNew();
-        var scan = DefScanner.Scan(files);
+        // ★ Task 14：同 check（全限定元素名归一化）。
+        var resolver = XmlElementTypeResolver.CreateFromCatalog(
+            Path.Combine(env.ManagedDir, "Assembly-CSharp.dll"), mods);
+        var scan = DefScanner.Scan(files, resolver: resolver);
         var idx = DefIndex.Build(scan.Defs);
         tParse.Stop();
 

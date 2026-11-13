@@ -9,6 +9,29 @@ public static class NameCommand
 {
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
+    /// <summary>本命令认得的开关（★ Task 9c：白名单的唯一声明点，紧挨着读它们的代码）。</summary>
+    public static readonly CommandFlagSet Flags = new("name", PrintHelp,
+        new FlagSpec("--kind", true, "type|field|property|method|enum|def"),
+        new FlagSpec("--owner", true, "Type"),
+        new FlagSpec("--index"),
+        new FlagSpec("--json"));
+
+    /// <summary>`name --help`（帮助不依赖环境探测：没装游戏也能看）。</summary>
+    public static void PrintHelp()
+    {
+        Console.WriteLine("rimdev name check <名> [options]");
+        Console.WriteLine();
+        Console.WriteLine("查一个名字在 RimWorld 程序集/Def 索引里是否存在，并在不存在时给候选（含大小写差异）。");
+        Console.WriteLine();
+        Console.WriteLine("  --kind <种类>     type | field | property | method | enum | def（缺省 = 不限种类）");
+        Console.WriteLine("  --owner <Type>    只在该类型上找成员（owner-less 搜索会跨全部类型）");
+        Console.WriteLine("  --index           把 --kind def 接到落盘的 Def 索引上（未建索引时如实提示，不猜）");
+        Console.WriteLine("  --json            机器可读输出");
+        Console.WriteLine("  --help, -h        打印本帮助（退出码 0）");
+        Console.WriteLine();
+        Console.WriteLine("退出码：0 存在；2 不存在（不是工具坏了）；3 参数错；4 环境不满足");
+    }
+
     public static int Run(EnvironmentResolution cli)
     {
         var args = cli.Args;

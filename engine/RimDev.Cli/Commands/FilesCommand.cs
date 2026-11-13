@@ -17,6 +17,31 @@ namespace RimDev.Cli.Commands;
 /// </summary>
 public static class FilesCommand
 {
+    /// <summary>本命令认得的开关（★ Task 9c：白名单的唯一声明点，紧挨着读它们的代码）。</summary>
+    public static readonly CommandFlagSet Flags = new("files", PrintHelp,
+        new FlagSpec("--scope", true, "active|all"),
+        new FlagSpec("--explain", true, "mod|all"),
+        new FlagSpec("--filter", true, "子串"),
+        new FlagSpec("--limit", true, "N"),
+        new FlagSpec("--json"));
+
+    /// <summary>`files --help`（帮助不依赖环境探测：没装游戏也能看）。</summary>
+    public static void PrintHelp()
+    {
+        Console.WriteLine("rimdev files [options]");
+        Console.WriteLine();
+        Console.WriteLine("把「每个 mod 到底会加载哪些目录」摊开：Origin / MatchedVersionKey / DescendingOrder / XmlFileCount / Issues。");
+        Console.WriteLine();
+        Console.WriteLine("  --scope active|all   扫描范围（默认 active）");
+        Console.WriteLine("  --explain <mod|all>  额外打印每个 mod 的目录优先级明细（索引 0 = 优先级最高）");
+        Console.WriteLine("  --filter <子串>      只保留 packageId/locator/显示名含该子串的 mod");
+        Console.WriteLine("  --limit <N>          最多打印 N 个 mod（0 = 不限；--scope all 默认 200）");
+        Console.WriteLine("  --json               机器可读输出");
+        Console.WriteLine("  --help, -h           打印本帮助（退出码 0）");
+        Console.WriteLine();
+        Console.WriteLine("退出码：0 成功；3 参数错；4 环境不满足；5 --explain 指定的 mod 找不到");
+    }
+
     public static int Run(EnvironmentResolution cli)
     {
         var args = cli.Args;

@@ -15,8 +15,10 @@ namespace RimDev.Cli;
 ///   <c>rimdev &lt;命令&gt; … --game-root X</c> 必须等价（<c>--workshop-root</c> / <c>--profile</c> 同理）。
 ///   后者是 shim（<c>rimdev.cmd</c> → <c>rimdev.ps1</c>）实际使用的形状 —— 它把
 ///   <c>--rimdev-profile / --rimdev-invoked-via / --workshop-root / --game-root</c> 追加在用户参数**之后**。</item>
-/// <item><b>未知开关响亮失败</b>：不认识的开关原样留在 <see cref="Args"/> 里，由未知命令分支报退出码 3，
-///   并在文案里说明「全局开关可放在命令前或命令后」（否则用户会以为位置写错了）。</item>
+/// <item><b>未知开关响亮失败</b>：本类只管<b>全局</b>开关；其余形如开关的 token 原样留在 <see cref="Args"/> 里，
+///   由两处分别拦截 —— 写在**命令位置**时走「未知命令」分支；写在**命令之后**时由
+///   <see cref="CommandFlags"/>（每条命令自己的白名单，第 3 期 Task 9c）报退出码 3。
+///   两处文案都说明「全局开关可放在命令前或命令后」（否则用户会以为位置写错了）。</item>
 /// </list>
 ///
 /// ★ 冲突口径：同一开关出现多次时**首次出现优先**。理由是可判别的一侧 ——
@@ -32,6 +34,25 @@ public sealed class GlobalOptions
     public const string ShimProfileFlag = "--rimdev-profile";
     public const string ShimInvokedViaFlag = "--rimdev-invoked-via";
 
+    /// <summary>
+    /// ★ 第 3 期 Task 9c：全局开关的**规范名清单**（唯一一份）。
+    /// <para>
+    /// 两个消费者共用它，免得再手抄第三份：① 命令白名单校验器（<see cref="CommandFlags"/>）
+    /// 要把它当作「除本命令声明之外还认得的东西」；② 报错文案要数出「全局开关只有这几个」。
+    /// </para>
+    /// <para>
+    /// 含 shim 专用的两个 `--rimdev-*`：它们是 shim（`rimdev.ps1`）追加在用户参数**之后**的，
+    /// 所以校验器必须认得它们，否则每个经 shim 的调用都会变成「未知开关」。
+    /// </para>
+    /// </summary>
+    public static readonly IReadOnlyList<string> AllFlagNames = new[]
+    {
+        GameRootFlag, WorkshopRootFlag, ProfileFlag, ShimProfileFlag, ShimInvokedViaFlag,
+    };
+
+    /// <summary>面向用户的三个全局开关（报错文案用；shim 内部的 `--rimdev-*` 不在其中）。</summary>
+    public const string PublicFlagList = "--game-root / --workshop-root / --profile";
+
     /// <summary><c>--game-root</c>；null = 没传（由环境变量 / 自动探测决定）。</summary>
     public string? GameRoot { get; private init; }
 
@@ -44,7 +65,11 @@ public sealed class GlobalOptions
     /// <summary><c>--rimdev-invoked-via</c>（shim 用来标注「这次是经切换入口进来的」）。</summary>
     public string? InvokedVia { get; private init; }
 
-    /// <summary>全局开关被摘掉后的参数；<c>Args[0]</c> = 子命令。</summary>
+    /// <summary>
+    /// 全局开关被摘掉后的参数；<c>Args[0]</c> = 子命令。
+    /// ★ 第 3 期 Task 9c：<c>--flag=value</c> 已在这里归一化为 <c>--flag value</c> 两个 token，
+    ///   所以各命令的 <c>Option(args, "--flag")</c> 对两种写法同样生效（修前等号形式会被静默忽略）。
+    /// </summary>
     public string[] Args { get; private init; } = Array.Empty<string>();
 
     /// <summary>解析错误（null = 没问题）。缺值时**必须**报参数错，不能猜一个默认值。</summary>
@@ -95,6 +120,16 @@ public sealed class GlobalOptions
                 invokedVia ??= value;
                 continue;
             }
+            // ★ 第 3 期 Task 9c：`--flag=value` 在这里**归一化**成两个 token（只对开关形状的 token）。
+            //   理由：各命令取值一律走 `Option(args, "--flag")`（= 找相邻两个 token），
+            //   等号形式若原样传下去就会「存在但取不到值」，等于另一种静默——修前 `--scope=active`
+            //   就是被静默忽略、退回默认值的。归一化后两种形式对命令完全等价，校验器也只需一份白名单。
+            if (TrySplitInlineValue(token, out var head, out var inlineValue))
+            {
+                rest.Add(head);
+                if (inlineValue is not null) rest.Add(inlineValue);
+                continue;
+            }
 
             rest.Add(token);
         }
@@ -122,6 +157,24 @@ public sealed class GlobalOptions
             return true;
         }
         return false;
+    }
+
+    /// <summary>
+    /// ★ 第 3 期 Task 9c：把 `--flag=value` 拆成 `--flag` + `value`（等号形式与空格形式**等价**）。
+    /// 只有「形如开关」的 token 才拆：单个 `-`、裸 `--`、以及不以 `-` 开头的普通参数一律原样。
+    /// 空值（如 `--scope=`）只留下开关本身 —— 后续「缺值」校验会照常报参数错，**不静默当成空串**。
+    /// </summary>
+    private static bool TrySplitInlineValue(string token, out string head, out string? value)
+    {
+        head = token;
+        value = null;
+        if (token.Length <= 2 || token[0] != '-' || token == "--") return false;
+        var eq = token.IndexOf('=', 1);
+        if (eq <= 1) return false;
+        head = token[..eq];
+        var tail = token[(eq + 1)..];
+        value = tail.Length == 0 ? null : tail;
+        return true;
     }
 
     /// <summary>取值；缺值 / 空值 / 下一个 token 是另一个开关 ⇒ 参数错（不静默降级）。</summary>

@@ -21,14 +21,14 @@ namespace RimDev.Cli.Commands;
 /// </summary>
 public static class OrderCommand
 {
+    /// <summary>本命令认得的开关（★ Task 9c：白名单的唯一声明点，紧挨着读它们的代码）。</summary>
+    public static readonly CommandFlagSet Flags = new("order", PrintHelp,
+        new FlagSpec("--json"),
+        new FlagSpec("--explain"));
+
     public static int Run(EnvironmentResolution cli)
     {
         var args = cli.Args;
-        if (args.Contains("--help") || args.Contains("-h") || args.Contains("--?"))
-        {
-            PrintHelp();
-            return 0;
-        }
 
         var json = args.Contains("--json");
         var explain = args.Contains("--explain");
@@ -139,7 +139,7 @@ public static class OrderCommand
         return rel.Length == 0 ? "." : rel;
     }
 
-    private static void PrintHelp()
+    public static void PrintHelp()
     {
         Console.WriteLine("rimdev order [--json] [--explain]");
         Console.WriteLine();

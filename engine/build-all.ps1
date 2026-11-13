@@ -1,4 +1,4 @@
-﻿# 第 3 期 Task 9：**双目标**构建 + 双自测 + shim 冒烟 + 汇总。
+# 第 3 期 Task 9：**双目标**构建 + 双自测 + shim 冒烟 + 汇总。
 #
 #   net8.0  → 给 1.6（Unity / net472 托管程序集）
 #   net10.0 → 给 1.7.x 线（Waylith / net10 托管程序集）
@@ -25,10 +25,29 @@ $projects = @(
     'RimDev.SelfTest\RimDev.SelfTest.csproj'
 )
 
+# ★★ 构建门禁必须**真的数警告**：修前这里只有 `if ($LASTEXITCODE -ne 0)`，而汇总里的
+#   「构建 0 警告 0 错误」是一句**写死的字符串** —— MSBuild 打出 `warning CS####` 时脚本照样报「0 警告」
+#   （2026-10-24 主理人复验 Task 9c 当场命中：raw 日志 4 行 warning，汇总行写 0）。
+#   这正是本项目反复追的那一族：**统计字段描述的是宣称，而不是实际动作**。
+#   现在：① 收集每个工程的构建输出并数 `warning <代码><数字>`；② 有一条就 exit 1；
+#   ③ 汇总行打印**实测值** `$totalWarnings` 而不是字面量。
+#   附带好处：并发跑导致的 MSB3026（DLL 被占用）现在会当场判红，不再「6 条警告 + 汇总写 0 警告」地混过去。
+$totalWarnings = 0
 foreach ($p in $projects) {
     Write-Host "=== build $p [net8.0;net10.0] ==="
-    dotnet build (Join-Path $root $p) -v:q --nologo @msbuildArgs
-    if ($LASTEXITCODE -ne 0) { Write-Error "build failed: $p"; exit 1 }
+    # 不要接给会提前终止管道的 cmdlet（那会改写 $LASTEXITCODE）；先收集再判。
+    $buildLog = & dotnet build (Join-Path $root $p) -v:q --nologo @msbuildArgs 2>&1
+    $buildCode = $LASTEXITCODE
+    foreach ($l in $buildLog) { Write-Host $l }
+    # ★ MSBuild 会把同一条警告打印两遍（正文一次 + 末尾汇总列表一次），且 Cli 会作为 SelfTest 的依赖
+    #   再被构建一次 ⇒ 不去重会把「2 条警告」报成「8 条」。先按行去重，口径写进报错文案。
+    $warns = @($buildLog | Where-Object { "$_" -match 'warning\s+[A-Z]+\d+' } | Select-Object -Unique)
+    $totalWarnings += $warns.Count
+    if ($buildCode -ne 0) { Write-Error "build failed: $p"; exit 1 }
+    if ($warns.Count -gt 0) {
+        Write-Error ("build produced {0} warning line(s)（每个 TFM 各计一次；阈值 0）: {1}（0 警告是门禁判据，不是祝福语）" -f $warns.Count, $p)
+        exit 1
+    }
 }
 
 $results = @()
@@ -159,12 +178,12 @@ foreach ($r in $results) {
     $exists = Test-Path $cli
     $art = $(if ($exists) { 'rimdev.exe ✓' } else { 'rimdev.exe ✗' })
     if ($r.NotApplicable) {
-        Write-Host ("[{0}] 构建 0 警告 0 错误 | 自测 不适用（本产物服务另一个布局，需对应布局的安装）| 产物 {1}" -f $r.Tfm, $art)
+        Write-Host ("[{0}] 构建 {1} 警告 0 错误 | 自测 不适用（本产物服务另一个布局，需对应布局的安装）| 产物 {2}" -f $r.Tfm, $totalWarnings, $art)
         Write-Host ("[{0}] SKIP {1} (需 Classic16 布局) — 未跑用例（产物/布局不匹配）" -f $r.Tfm, $r.Skipped)
         continue
     }
-    Write-Host ("[{0}] 构建 0 警告 0 错误 | 自测 {1}/{2} 通过（失败 {3}）| 产物 {4}" -f `
-        $r.Tfm, $r.Passed, $r.Total, $r.Failed, $art)
+    Write-Host ("[{0}] 构建 {1} 警告 0 错误 | 自测 {2}/{3} 通过（失败 {4}）| 产物 {5}" -f `
+        $r.Tfm, $totalWarnings, $r.Passed, $r.Total, $r.Failed, $art)
     if ($r.Skipped -gt 0) {
         Write-Host ("[{0}] SKIP {1} (需 Classic16 布局)" -f $r.Tfm, $r.Skipped)
         foreach ($n in $r.Names) { Write-Host ("[{0}]   - {1}" -f $r.Tfm, $n) }

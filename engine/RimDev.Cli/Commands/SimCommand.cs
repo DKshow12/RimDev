@@ -31,14 +31,17 @@ namespace RimDev.Cli.Commands;
 /// </summary>
 public static class SimCommand
 {
+    /// <summary>本命令认得的开关（★ Task 9c：白名单的唯一声明点，紧挨着读它们的代码）。</summary>
+    public static readonly CommandFlagSet Flags = new("sim", PrintHelp,
+        new FlagSpec("--scope", true, "target|active|all"),
+        new FlagSpec("--all"),
+        new FlagSpec("--json"),
+        new FlagSpec("--timings"),
+        new FlagSpec("--parallel", true, "N"));
+
     public static int Run(EnvironmentResolution cli)
     {
         var args = cli.Args;
-        if (args.Contains("--help") || args.Contains("-h") || args.Contains("--?"))
-        {
-            PrintHelp();
-            return 0;
-        }
 
         var modArg = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : null;
         var scope = ParseScope(args, out var scopeError);
@@ -524,7 +527,7 @@ public static class SimCommand
         return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
     }
 
-    private static void PrintHelp()
+    public static void PrintHelp()
     {
         Console.WriteLine("rimdev sim [<mod>] [options]");
         Console.WriteLine();

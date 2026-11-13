@@ -25,7 +25,10 @@ public static class CommandLine
     /// <summary>参数错（与 <c>01</c> §4 一致）。</summary>
     public const int ExitArgs = 3;
 
-    /// <summary>用法一行（--help 与未知命令共用）。</summary>
+    /// <summary>版本查询（命令位置的伪命令；不需要环境、也不需要开关白名单）。</summary>
+    public const string VersionFlag = "--version";
+
+    /// <summary>用法一行（`--help` 与未知命令共用）。</summary>
     public const string Usage =
         "usage: rimdev <env|api|name|index|check|files|order|sim> [options]（`rimdev check --help` / `rimdev sim --help` 看 scan scope 语义）";
 
@@ -73,8 +76,41 @@ public static class CommandLine
             return ExitArgs;
         }
 
-        var ctx = new EnvironmentResolution(options);
         var command = options.Args[0];
+
+        // ★ 全局帮助 / 版本：不需要命令、也不需要环境（没装游戏时也得能看帮助）。
+        if (CommandFlagSet.IsHelpFlag(command))
+        {
+            Console.WriteLine(Usage);
+            return 0;
+        }
+
+        if (command == VersionFlag) return PrintVersion();
+
+        // ★★ 第 3 期 Task 9c：**每条命令先拿出它自己的开关白名单**（声明在各命令文件里，
+        //   `CommandFlags` 只做登记）。拿不到 = 不认识的命令 ⇒ 走未知命令分支（含「开关写在命令位置」）。
+        var flags = CommandFlags.For(command);
+        if (flags is null) return Unknown(command);
+
+        // ★★ 9c：**未知开关响亮失败，且绝不继续执行命令**。
+        //   缺陷背景：`check --scope active --game-rot C:\__typo__`（把 --game-root 拼错）修前照常扫描并输出
+        //   「9 个 mod / 561 个 XML / 6727 个 def / error 399」，与完全不带开关时一模一样 —— 用户无法从输出里
+        //   察觉自己扫的不是他指定的那份安装。现在：退出码 3 + stderr 点名该开关 + 提示正确的全局开关名与位置语义。
+        if (CommandFlags.FindUnknown(flags, options.Args) is { } unknownFlag)
+        {
+            Console.Error.WriteLine(CommandFlags.UnknownFlagMessage(flags, unknownFlag));
+            return ExitArgs;
+        }
+
+        // 帮助走同一条路：`--help` / `-h` / `--?` 由白名单放行，这里统一打印并返回 0
+        // （每个命令自己提供帮助正文，所以 check/sim/order 的详细帮助与 env/api/… 的简版帮助都在一处生效）。
+        if (options.Args.Skip(1).Any(CommandFlagSet.IsHelpFlag))
+        {
+            flags.Help();
+            return 0;
+        }
+
+        var ctx = new EnvironmentResolution(options);
 
         // ★ 第 3 期 Task 9：**产物 ↔ 布局**一致性闸门。
         //   net8 产物服务 Classic16（1.6，net472 托管程序集），net10 产物服务 Waylith17（1.7.x 线，net10 托管程序集）。
@@ -102,7 +138,7 @@ public static class CommandLine
             "name" => NameCommand.Run(ctx),
             // ★ 第 3 期 Task 6：加载结果摘要（有效 def / 遮蔽 / 悬空引用 / MayRequire / loader 边界）
             "sim" => SimCommand.Run(ctx),
-            "--version" => PrintVersion(),
+            // 不可达（上面已按白名单登记表拦下）：留作兜底，新增命令忘登记时这里会报未知命令而不是编译错。
             _ => Unknown(command)
         };
     }
@@ -147,7 +183,11 @@ public static class CommandLine
     private static int Unknown(string cmd)
     {
         Console.Error.WriteLine($"未知命令: {cmd}");
-        Console.Error.WriteLine("全局开关（--game-root / --workshop-root / --profile）**可以放在命令前，也可以放在命令后**：");
+        // ★ 9c：命令位置的 token 长得像开关时，多一句归因 —— 否则用户会以为是「命令名写错了」而不是
+        //   「全局开关拼写错了」（能被 GlobalOptions 摘掉的全局开关根本走不到这里）。
+        if (CommandFlagSet.LooksLikeFlag(cmd))
+            Console.Error.WriteLine("  （它看起来是个开关：全局开关会在解析阶段被摘掉，走到这里说明它既不是命令、也不是全局开关）");
+        Console.Error.WriteLine($"全局开关（{GlobalOptions.PublicFlagList}）**可以放在命令前，也可以放在命令后**：");
         Console.Error.WriteLine("  rimdev --game-root <游戏根> check --scope active");
         Console.Error.WriteLine("  rimdev check --scope active --game-root <游戏根>        （两者等价）");
         Console.Error.WriteLine(Usage);

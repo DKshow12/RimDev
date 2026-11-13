@@ -36,15 +36,19 @@ public static class CheckCommand
     //   RimDev.Core/Checks/CheckScope.cs —— 放在 Core 是为了让自测**不必引用 CLI 工程**
     //   就能钉住「`--all` 等价于 `--scope active`」。本类只保留一层转发（见下方三个转发函数）。
 
+    /// <summary>本命令认得的开关（★ Task 9c：白名单的唯一声明点，紧挨着读它们的代码）。</summary>
+    public static readonly CommandFlagSet Flags = new("check", PrintHelp,
+        new FlagSpec("--scope", true, "target|active|all"),
+        new FlagSpec("--all"),
+        new FlagSpec("--only-official"),
+        new FlagSpec("--shadowing"),
+        new FlagSpec("--severity", true, "error|warning|info"),
+        new FlagSpec("--json"));
+
     public static int Run(EnvironmentResolution cli)
     {
         var args = cli.Args;
         // rimdev check [<mod>] [--scope target|active|all] [--all] [--only-official] [--severity ...] [--json]
-        if (args.Contains("--help") || args.Contains("-h") || args.Contains("--?"))
-        {
-            PrintHelp();
-            return 0;
-        }
 
         var modArg = args.Length > 1 && !args[1].StartsWith("--") ? args[1] : null;
         var scope = ParseScope(args, out var scopeError);
@@ -333,7 +337,7 @@ public static class CheckCommand
     private static bool IsShadowingCode(string code) =>
         code is Codes.DefShadowed or Codes.DefDuplicateWithinMod or Codes.LoadOrderViolation;
 
-    private static void PrintHelp()
+    public static void PrintHelp()
     {
         Console.WriteLine("rimdev check [<mod>] [options]");
         Console.WriteLine();

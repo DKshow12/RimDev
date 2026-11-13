@@ -8,15 +8,47 @@ namespace RimDev.Cli.Commands;
 
 public static class IndexCommand
 {
+    /// <summary>本命令认得的开关（★ Task 9c：白名单的唯一声明点，紧挨着读它们的代码）。</summary>
+    public static readonly CommandFlagSet Flags = new("index", PrintHelp,
+        new FlagSpec("--scope", true, "active|all"),
+        new FlagSpec("--rebuild"),
+        new FlagSpec("--no-workshop"),
+        new FlagSpec("--cache", true, "目录"),
+        new FlagSpec("--json"));
+
+    /// <summary>`index --help`（帮助不依赖环境探测：没装游戏也能看）。</summary>
+    public static void PrintHelp()
+    {
+        Console.WriteLine("rimdev index [options]");
+        Console.WriteLine();
+        Console.WriteLine("建立/复用 Def 索引缓存（defs.jsonl + 指纹表），并打印计数自洽三式的检查结果。");
+        Console.WriteLine();
+        Console.WriteLine("  --scope active|all   扫描范围（默认 active = 全部启用 mod；all = 全库）");
+        Console.WriteLine("  --rebuild            忽略现有指纹，强制全量重扫");
+        Console.WriteLine("  --no-workshop        扫描时排除工坊 mod");
+        Console.WriteLine("  --cache <目录>       缓存目录（缺省 = DefIndexStore.DefaultCacheDir）");
+        Console.WriteLine("  --json               机器可读输出");
+        Console.WriteLine("  --help, -h           打印本帮助（退出码 0）");
+        Console.WriteLine();
+        Console.WriteLine("退出码：0 成功；3 参数错；4 环境不满足（找不到游戏根）");
+    }
+
     public static int Run(EnvironmentResolution cli)
     {
         var args = cli.Args;
         // rimdev index [--scope active|all] [--rebuild] [--no-workshop] [--cache <dir>] [--json]
-        var scope = Option(args, "--scope")?.ToLowerInvariant() switch
+        // ★ 9c 收尾：`--scope` 的**取值域也必须响亮失败**。修前 `_ => ScanScope.Active` 会把任何拼错
+        //   的值静默当成 active 并照常跑一次索引（`index --scope bogus` → exit 0、产出 1882 B 结果），
+        //   而 `files`/`check`/`sim` 三条命令对同一个错值都是 exit 3 —— 同一类参数错在不同命令上
+        //   一个响亮一个静默，是最容易被误读成「工具就是这么设计的」的那种不一致。
+        //   （这是**参数层**与白名单同族的一环：9c 已让「开关名写错」响亮，这里让「开关值写错」也响亮。）
+        var scopeArg = Option(args, "--scope")?.ToLowerInvariant();
+        if (scopeArg is not (null or "active" or "all"))
         {
-            "all" => ScanScope.All,
-            _ => ScanScope.Active
-        };
+            Console.Error.WriteLine($"未知的 --scope: {scopeArg}（可选 active|all）");
+            return 3;
+        }
+        var scope = scopeArg == "all" ? ScanScope.All : ScanScope.Active;
         var rebuild = args.Contains("--rebuild");
         var noWorkshop = args.Contains("--no-workshop");
         var json = args.Contains("--json");

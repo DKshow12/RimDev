@@ -5,6 +5,24 @@ namespace RimDev.Cli.Commands;
 
 public static class EnvCommand
 {
+    /// <summary>本命令认得的开关（★ Task 9c：白名单的唯一声明点，紧挨着读它们的代码）。</summary>
+    public static readonly CommandFlagSet Flags = new("env", PrintHelp,
+        new FlagSpec("--json"));
+
+    /// <summary>`env --help`（帮助不依赖环境探测：没装游戏也能看）。</summary>
+    public static void PrintHelp()
+    {
+        Console.WriteLine("rimdev env [--json]");
+        Console.WriteLine();
+        Console.WriteLine("打印本次生效的环境解析：布局 / 游戏根（含来源）/ 托管程序集身份 / 工坊根 / 配置与日志路径 / 版本口径。");
+        Console.WriteLine();
+        Console.WriteLine("  --json        机器可读输出（含 gameRootSource / workshopRootSource / typeResolutionDetail）");
+        Console.WriteLine("  --help, -h    打印本帮助（退出码 0）");
+        Console.WriteLine();
+        Console.WriteLine("全局开关（--game-root / --workshop-root / --profile）可以放在命令前，也可以放在命令后。");
+        Console.WriteLine("退出码：0 成功；3 参数错；4 环境不满足（找不到游戏根 / 托管程序集）");
+    }
+
     public static int Run(EnvironmentResolution cli)
     {
         var args = cli.Args;

@@ -8,7 +8,9 @@ namespace RimDev.SelfTest;
 /// </summary>
 public static class T
 {
-    private sealed record Result(string Name, bool Ok, string? Message, long Ms);
+    // ★ Group 与 Name 分开存：用例名里可能含 " / "（如「supportedVersions / loadAfter 解析」），
+    //   早期版本把两者拼成 "group/name" 再用 Split('/')[1] 取显示名，会把这类用例名截断。
+    private sealed record Result(string Group, string Name, bool Ok, string? Message, long Ms);
 
     private static readonly List<Result> Results = new();
     private static string _group = "default";
@@ -21,11 +23,11 @@ public static class T
         try
         {
             body();
-            Results.Add(new Result($"{_group}/{name}", true, null, sw.ElapsedMilliseconds));
+            Results.Add(new Result(_group, name, true, null, sw.ElapsedMilliseconds));
         }
         catch (Exception ex)
         {
-            Results.Add(new Result($"{_group}/{name}", false, ex.Message, sw.ElapsedMilliseconds));
+            Results.Add(new Result(_group, name, false, ex.Message, sw.ElapsedMilliseconds));
         }
     }
 
@@ -67,22 +69,21 @@ public static class T
         string? lastGroup = null;
         foreach (var r in Results)
         {
-            var group = r.Name.Split('/')[0];
-            if (group != lastGroup)
+            if (r.Group != lastGroup)
             {
-                sb.AppendLine($"--- {group} ---");
-                lastGroup = group;
+                sb.AppendLine($"--- {r.Group} ---");
+                lastGroup = r.Group;
             }
 
             if (r.Ok)
             {
                 passed++;
-                sb.AppendLine($"  PASS {r.Name.Split('/')[1]} ({r.Ms} ms)");
+                sb.AppendLine($"  PASS {r.Name} ({r.Ms} ms)");
             }
             else
             {
                 failed++;
-                sb.AppendLine($"  FAIL {r.Name.Split('/')[1]} ({r.Ms} ms)");
+                sb.AppendLine($"  FAIL {r.Name} ({r.Ms} ms)");
                 sb.AppendLine($"       {r.Message}");
             }
         }
@@ -95,7 +96,7 @@ public static class T
         {
             Console.WriteLine("有失败用例。失败清单：");
             foreach (var r in Results.Where(x => !x.Ok))
-                Console.WriteLine($"  - {r.Name}: {r.Message}");
+                Console.WriteLine($"  - {r.Group}/{r.Name}: {r.Message}");
         }
 
         return failed > 0 ? 1 : 0;

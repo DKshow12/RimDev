@@ -52,6 +52,11 @@ if (args.Contains("--task9b-cases"))
 }
 // ★ 第 3 期 Task 9c：按需入口 `rimdev-selftest --task9c-cases`（只跑本 Task 的用例，约十秒 ——
 //   其中 index/files/check×2/sim 各一次真扫描）。
+if (args.Contains("--task19-cases"))
+{
+    T.RunFile("phase3-task19", Phase3Task19Cases.Run);
+    return T.Report();
+}
 if (args.Contains("--task18-cases"))
 {
     T.RunFile("phase3-task18", Phase3Task18Cases.Run);
@@ -183,5 +188,7 @@ T.RunFile("phase3-task16", Phase3Task16Cases.Run);
 T.RunFile("phase3-task17", Phase3Task17Cases.Run);
 // ★ 第 3 期 Task 18：<success> 四种语义（Always 无条件 / Never 真中断 / Invert / Normal）
 T.RunFile("phase3-task18", Phase3Task18Cases.Run);
+// ★ 第 3 期 Task 19：按规则子集运行（--rules / --skip-rules）
+T.RunFile("phase3-task19", Phase3Task19Cases.Run);
 
 return T.Report();

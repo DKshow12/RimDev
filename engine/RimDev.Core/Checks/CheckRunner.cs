@@ -39,6 +39,44 @@ public sealed class CheckRunner
     private static readonly bool _trace =
         System.Environment.GetEnvironmentVariable("RIMDEV_CHECK_TRACE") == "1";
 
+
+    /// <summary>
+    /// ★ Task 19：**只跑选中的规则**（黑/白名单）。
+    ///
+    /// <para>为什么不能用 <see cref="Run"/> 的 <c>filter</c>：那个参数是**结果过滤** ——
+    /// 诊断仍然全部算完了才剔除，耗时一分不少。而实测（本机 629 mod / 1.7.5005）
+    /// RD2009 单条就占全部 14.3 分钟里的 13.7 分钟 —— 想只看引用问题却要陪跑补丁层。</para>
+    ///
+    /// <para>本方法在**执行前**就把不选的规则从清单里去掉。</para>
+    ///
+    /// <para>★ 语义：两个集合都空 ⇒ 全跑（保持原行为）。
+    /// <c>only</c> 非空 ⇒ 只跑它里面的；<c>skip</c> 非空 ⇒ 跑除它之外的；
+    /// 两者同时给 ⇒ 先取交集再剔除（最保守）。两条都**大小写不敏感**。</para>
+    ///
+    /// <returns>实际被保留的规则 id（按注册顺序）。</returns>
+    /// </summary>
+    public IReadOnlyList<string> SelectRules(
+        IReadOnlyCollection<string>? only, IReadOnlyCollection<string>? skip)
+    {
+        if ((only is null || only.Count == 0) && (skip is null || skip.Count == 0))
+            return _checks.Select(c => c.Id).ToList();
+
+        var onlySet = only is null || only.Count == 0
+            ? null
+            : new HashSet<string>(only.Select(x => x.Trim()), StringComparer.OrdinalIgnoreCase);
+        var skipSet = skip is null || skip.Count == 0
+            ? null
+            : new HashSet<string>(skip.Select(x => x.Trim()), StringComparer.OrdinalIgnoreCase);
+
+        var keep = _checks
+            .Where(c => onlySet is null || onlySet.Contains(c.Id))
+            .Where(c => skipSet is null || !skipSet.Contains(c.Id))
+            .ToList();
+
+        _checks.Clear();
+        _checks.AddRange(keep);
+        return keep.Select(c => c.Id).ToList();
+    }
     /// <summary>
     /// 已注册的规则（只读）。
     /// ★ 存在意义：`check --json` 要把 <see cref="PatchCheck"/> **自己算出来的**补丁层统计报出去

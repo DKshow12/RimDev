@@ -42,6 +42,9 @@ public static class CheckCommand
         new FlagSpec("--all"),
         new FlagSpec("--only-official"),
         new FlagSpec("--shadowing"),
+        // ★ Task 19：只跑 / 只跳某些规则（逗号分隔的 id）。
+        new FlagSpec("--rules", true, "RD3001,RD2001"),
+        new FlagSpec("--skip-rules", true, "RD2009"),
         new FlagSpec("--severity", true, "error|warning|info"),
         new FlagSpec("--json"));
 
@@ -60,6 +63,9 @@ public static class CheckCommand
         var onlyOfficial = args.Contains("--only-official");
         // ★ 第 3 期 Task 3：`--shadowing` = 只看遮蔽/顺序族（RD2011 / RD2025 / RD2026）。
         var shadowingOnly = args.Contains("--shadowing");
+        // ★ Task 19：规则子集。空 = 全跑。
+        var onlyRules = ParseRuleList(args, "--rules");
+        var skipRules = ParseRuleList(args, "--skip-rules");
         // ★ 预检修正 ③：未知取值/缺值必须报参数错（退出码 3），不能静默降级为 info。
         var sevArg = Option(args, "--severity")?.ToLowerInvariant();
         Severity minSeverity;
@@ -140,6 +146,10 @@ public static class CheckCommand
         // ★ 第 3 期 Task 4：把 runner 持有住 —— 补丁层的实测统计要从 PatchCheck 自己身上读，
         //   不能在 CLI 里重算一遍（两套口径必然分叉）。
         var runner = CheckRunner.Default();
+        // ★ Task 19：**执行前**剔除不跑的规则。
+        //   实测（629 mod）：只跑 RD2009 需 13.7 分钟，只跑 RD3001 需 29 秒。
+        //   没这个开关，想只看引用问题就得陪跑补丁层。
+        var keptRules = runner.SelectRules(onlyRules, skipRules);
         var diags = runner.Run(ctx)
             .Where(d => d.Severity >= minSeverity)
             // ★ 第 3 期 Task 3：`--shadowing` 只保留「遮蔽 / 加载顺序」族（RD2011 / RD2025 / RD2026）。
@@ -280,6 +290,16 @@ public static class CheckCommand
         Console.WriteLine($"扫描            {mods.Count} 个 mod / {files.Count} 个 XML / {idx.TotalDefs} 个 def"
                           + (targetFilter is not null ? "   （全集扫描；报告按目标过滤）" : ""));
         Console.WriteLine($"结果            error {summary.error}   warning {summary.warning}   info {summary.info}");
+        // ★ Task 19：规则子集必须可见 —— 否则「只跑了 2 条规则」的结果
+        //   会被读成「其他 7 条规则没问题」（那是假 0，项目最忌的一类）。
+        if (keptRules.Count != runner.Checks.Count || args.Contains("--rules") || args.Contains("--skip-rules"))
+        {
+            var allIds = CheckRunner.Default().Checks.Select(c => c.Id).ToList();
+            var skipped = allIds.Where(x => !keptRules.Contains(x, StringComparer.OrdinalIgnoreCase)).ToList();
+            Console.WriteLine($"规则子集        跑 {keptRules.Count} / {allIds.Count} 条：" +
+                string.Join(", ", keptRules) +
+                (skipped.Count > 0 ? $"   （未跑：{string.Join(", ", skipped)}）" : ""));
+        }
         // ★ Task 11：被降级的 RD3001（引用方 mod 未启用 ⇒ info）单独可见。
         //   没这一行，使用者只能看到 error 数和 info 数同时变大，分不清哪些是「未启用 mod 的噪音」、哪些是「真缺陷」。
         var downgradedRd3001 = diags.Count(d => d.Code == Codes.DefNameNotFound && d.Severity == Severity.Info);
@@ -347,6 +367,23 @@ public static class CheckCommand
     /// <summary>「遮蔽/加载顺序」族的码号 —— 与 <c>--shadowing</c> 开关共用同一处定义（避免两处分叉）。</summary>
     private static bool IsShadowingCode(string code) =>
         code is Codes.DefShadowed or Codes.DefDuplicateWithinMod or Codes.LoadOrderViolation;
+
+    /// <summary>
+    /// ★ Task 19：从 argv 里取 <c>--rules</c>/<c>--skip-rules</c> 的逗号分隔列表。
+    /// <para>值缺失或为空返回 null（= 不过滤）；不做任何格式罚罚 ——
+    /// 不存在的 id 由 <see cref="CheckRunner.SelectRules"/> 自然忽略，并在人读输出里报出。</para>
+    /// </summary>
+    private static IReadOnlyCollection<string>? ParseRuleList(string[] args, string flag)
+    {
+        var i = Array.IndexOf(args, flag);
+        if (i < 0 || i + 1 >= args.Length) return null;
+        var parts = args[i + 1]
+            .Split(new[] { ',', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => x.Trim())
+            .Where(x => x.Length > 0)
+            .ToList();
+        return parts.Count == 0 ? null : parts;
+    }
 
     public static void PrintHelp()
     {

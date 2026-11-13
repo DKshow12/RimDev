@@ -104,7 +104,8 @@ public static class IndexCommand
                 abstractDefs = idx.AbstractDefs,
                 typeCounts = idx.CountByType.OrderByDescending(kv => kv.Value).Take(20)
                     .ToDictionary(kv => kv.Key, kv => kv.Value),
-                duplicateDefNames = idx.ByDefName.Count(kv => kv.Value.Count > 1),
+                // ★ 必须按 (DefType, defName) 判重：用 ByDefName 会报出 1202 条跨类型假重名（真值 1）
+                duplicateDefNames = idx.ByTypeAndDefName.Count(kv => kv.Value.Count > 1),
                 elapsedMs = sw.ElapsedMilliseconds,
                 diagnostics = build.Diagnostics.Select(d => new
                 {
@@ -122,7 +123,8 @@ public static class IndexCommand
         Console.WriteLine($"指纹判定变更     {changedByFingerprint}   （已删除 {diff.Removed.Count}）");
         Console.WriteLine($"解析失败         {scan.FilesFailed}");
         Console.WriteLine($"索引 def 总数    {idx.TotalDefs}   （抽象基类 {idx.AbstractDefs}）");
-        Console.WriteLine($"defName 重名     {idx.ByDefName.Count(kv => kv.Value.Count > 1)}");
+        // ★ 必须按 (DefType, defName) 判重：用 ByDefName 会报出 1202 条跨类型假重名（真值 1）
+        Console.WriteLine($"defName 重名     {idx.ByTypeAndDefName.Count(kv => kv.Value.Count > 1)}");
         Console.WriteLine($"缓存目录         {cacheDir}");
         Console.WriteLine($"耗时             {sw.ElapsedMilliseconds} ms");
         Console.WriteLine();

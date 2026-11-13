@@ -6,5 +6,6 @@ MetadataCases.Run();
 NameCases.Run();
 CatalogCases.Run();
 DefScanCases.Run();
+CheckCases.Run();
 
 return T.Report();

@@ -221,6 +221,11 @@ public static class DefScanner
         IEnumerable<(string PackageId, string RootPath, IReadOnlyList<string> LoadFolders)> mods)
     {
         var list = new List<(string FileAbs, string ModPackageId, string ModRoot)>();
+        // ★ 防线二（独立于 LoadFoldersReader.Read）：按 FileAbs 去重（大小写不敏感，Windows 路径），
+        //   保持首次出现顺序。两处都要修的原因：它们是两个独立入口，任一被改回都会重新引入重复；
+        //   且 ModInfo.LoadFolders 可能来自别处、根本没走 Read（例如调用方自己拼的目录列表）。
+        //   实测（2026-10-14）：all 作用域 files=74518 / distinct=73019，多出的 1499 条即重复枚举。
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var m in mods)
         {
             foreach (var dir in m.LoadFolders)
@@ -230,7 +235,7 @@ public static class DefScanner
                     var p = Path.Combine(dir, sub);
                     if (!Directory.Exists(p)) continue;
                     foreach (var f in Directory.EnumerateFiles(p, "*.xml", SearchOption.AllDirectories))
-                        list.Add((f, m.PackageId, m.RootPath));
+                        if (seen.Add(f)) list.Add((f, m.PackageId, m.RootPath));
                 }
             }
         }

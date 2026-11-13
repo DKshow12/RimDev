@@ -217,5 +217,61 @@ public static class DefScanCases
             }
             finally { if (Directory.Exists(tmp)) Directory.Delete(tmp, true); }
         });
+        T.Case("★ LoadMeta 往返一致；缺失/损坏时返回 null（缓存快路径的 failed 来源）", () =>
+        {
+            var tf = cat.Get("dsh.threatfleet.fragments")!;
+            var tfFiles = DefScanner.CollectFiles(
+                new[] { (tf.PackageId, tf.RootPath, (IReadOnlyList<string>)tf.LoadFolders) });
+            var scan = DefScanner.Scan(tfFiles);
+
+            var tmp = Path.Combine(Path.GetTempPath(), "rimdev-meta-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var store = new DefIndexStore(tmp);
+                T.Null(store.LoadMeta(), "meta 不存在时应返回 null");
+
+                store.Save(scan, DefIndexStore.FingerprintAll(tfFiles), "active");
+                var m = store.LoadMeta();
+                T.NotNull(m, "meta 应可读回");
+                T.Eq(m!.SchemaVersion, 1, "schemaVersion");
+                T.Eq(m.Scope, "active", "scope 往返一致");
+                T.Eq(m.Files, scan.FilesScanned, "files 往返一致");
+                T.Eq(m.Failed, scan.FilesFailed, "failed 往返一致");
+                T.Eq(m.Defs, scan.Defs.Count, "defs 往返一致");
+
+                File.WriteAllText(store.MetaPath, "{ this is not json");
+                T.Null(store.LoadMeta(), "meta 损坏时应返回 null（不得抛异常）");
+            }
+            finally { if (Directory.Exists(tmp)) Directory.Delete(tmp, true); }
+        });
+
+        T.Case("★ CollectFiles 不得产生重复路径（防同一 def 被索引多次 → 假重名）", () =>
+        {
+            // 实测背景（2026-10-14）：47 个工坊 mod 的 loadFolders.xml 声明了重复 <li>
+            // （例如 2297729625 把 Compatibility\Mods\DESurgeries 列了 6 次），
+            // 而 LoadFoldersReader.Read 与 CollectFiles 都不去重 → all 作用域
+            // files=74518 但 distinct=73019（多出 1499），同一 def 被索引多次，
+            // duplicateDefNames 报出纯粹由重复计数造出来的假重名。
+            var all = DefScanner.CollectFiles(cat.All.Select(m =>
+                (m.PackageId, m.RootPath, (IReadOnlyList<string>)m.LoadFolders)));
+            var distinct = all.Select(f => f.FileAbs).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+            T.Eq(all.Count, distinct, $"CollectFiles 返回 {all.Count} 条，其中不同路径只有 {distinct} 条");
+        });
+
+        T.Case("★ 重复目录只枚举一次：所有 mod 的 LoadFolders 目录必须互不重复", () =>
+        {
+            int dupDirs = 0;
+            string? sample = null;
+            foreach (var m in cat.All)
+            {
+                var lf = (IReadOnlyList<string>)m.LoadFolders;
+                if (lf.Count != lf.Distinct(StringComparer.OrdinalIgnoreCase).Count())
+                {
+                    dupDirs++;
+                    sample ??= m.PackageId;
+                }
+            }
+            T.Eq(dupDirs, 0, $"仍有 {dupDirs} 个 mod 的 LoadFolders 含重复目录（例：{sample}）");
+        });
     }
 }

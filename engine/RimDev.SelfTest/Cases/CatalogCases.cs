@@ -128,5 +128,26 @@ public static class CatalogCases
             var r = ModCatalog.Build(env, env.TargetVersion, Array.Empty<string>());
             T.True(r.ElapsedMs < 10_000, $"实测 {r.ElapsedMs} ms（基线 1375 ms）");
         });
+
+        T.Case("★ loadFolders 里的重复 <li> 只返回一次目录", () =>
+        {
+            var tmp = Path.Combine(Path.GetTempPath(), "rimdev-lfdup-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                Directory.CreateDirectory(tmp);
+                var sub = Path.Combine(tmp, "1.6");
+                Directory.CreateDirectory(sub);
+                File.WriteAllText(Path.Combine(tmp, "loadFolders.xml"),
+                    "<loadFolders><v1.6>"
+                    + "<li>.</li><li>1.6</li><li>1.6</li><li>.</li><li>1.6</li>"
+                    + "</v1.6></loadFolders>");
+
+                var dirs = LoadFoldersReader.Read(tmp, "1.6");
+                T.NotNull(dirs, "应读到 loadFolders");
+                T.Eq(dirs!.Length, 2, $"目录数应为 2（根 + 1.6），实际 {dirs.Length}：{string.Join(" | ", dirs)}");
+                T.Eq(dirs.Distinct(StringComparer.OrdinalIgnoreCase).Count(), 2, "目录必须互不重复");
+            }
+            finally { if (Directory.Exists(tmp)) Directory.Delete(tmp, true); }
+        });
     }
 }

@@ -35,17 +35,25 @@ public static class LoadFoldersReader
             if (section is null) return Array.Empty<string>();
 
             var result = new List<string>();
+            // ★ 去重（大小写不敏感，Windows 路径），保持**首次出现顺序**：
+            //   实测 47 个工坊 mod 的 loadFolders.xml 声明了重复 <li>（例：workshop\content\294100\2297729625
+            //   把 Compatibility\Mods\DESurgeries 列了 6 次），且 <li>.</li> 也会重复出现 → 同一个 modRoot 被多次加入。
+            //   不去重的后果不是「数字不好看」：同一份 XML 会被枚举/解析 N 次 → 同一 def 被索引多次
+            //   → ByDefName 里同一 defName 的 List<RawDef>.Count > 1 → duplicateDefNames 报出纯粹由重复计数
+            //   造出来的**假重名**（这正是 Task 6 的 RD2004 要读的数，误报比不报更糟）。
+            //   注意：HashSet 只用于「挡重复」，返回值仍是逐个累积的 List（顺序影响索引稳定性）。
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (XmlNode li in section.SelectNodes("li") ?? new XmlNodeListStub())
             {
                 var v = (li.InnerText ?? "").Trim();
                 if (v.Length == 0) continue;
                 if (v == "/" || v == "." || v == "\\")
                 {
-                    result.Add(modRoot);
+                    if (seen.Add(modRoot)) result.Add(modRoot);
                     continue;
                 }
                 var abs = Path.Combine(modRoot, v.Replace('/', Path.DirectorySeparatorChar));
-                if (Directory.Exists(abs)) result.Add(abs);
+                if (Directory.Exists(abs) && seen.Add(abs)) result.Add(abs);
             }
             return result.ToArray();
         }

@@ -161,4 +161,33 @@ public sealed class DefIndexStore
     }
 
     public bool Exists() => File.Exists(DefsPath) && File.Exists(MetaPath);
+
+    /// <summary>index-meta.json 的内容（读回用于统计，尤其是上一次真扫描的解析失败数）。</summary>
+    public sealed record Meta(int SchemaVersion, string? Scope, int Files, int Failed, int Defs);
+
+    /// <summary>
+    /// 读回 index-meta.json。**必须用它**：走缓存快路径时若把 FilesFailed 当成 0，
+    /// 上一次真扫描的解析失败就会被报成「解析失败 0」—— 一个假的「全清」信号，
+    /// 与「只删不改走缓存」同属一类静默错答。
+    /// 文件缺失或损坏时返回 null（调用方按 0 处理）。
+    /// </summary>
+    public Meta? LoadMeta()
+    {
+        if (!File.Exists(MetaPath)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(MetaPath));
+            var r = doc.RootElement;
+            return new Meta(
+                SchemaVersion: r.TryGetProperty("schemaVersion", out var sv) ? sv.GetInt32() : 0,
+                Scope: r.TryGetProperty("scope", out var sc) ? sc.GetString() : null,
+                Files: r.TryGetProperty("files", out var fi) ? fi.GetInt32() : 0,
+                Failed: r.TryGetProperty("failed", out var fa) ? fa.GetInt32() : 0,
+                Defs: r.TryGetProperty("defs", out var de) ? de.GetInt32() : 0);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 }

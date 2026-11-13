@@ -1,0 +1,26 @@
+{
+  "name": "@rimdev/dsh-rimdev",
+  "version": "0.1.0",
+  "description": "RimDev 工具链接入：把 rimdev.exe 的静态分析能力（env/api/check/order/sim/log）暴露成模型可调用的工具。",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.mjs",
+  "license": "BSD-3-Clause",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "rimworld",
+    "rimdev"
+  ],
+  "peerDependencies": {
+    "cordis": ">=4.0.0-rc <5"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  },
+  "exports": {
+    ".": {
+      "default": "./src/index.mjs"
+    }
+  }
+}

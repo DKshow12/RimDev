@@ -20,3 +20,8 @@ tools/**/obj/
 
 # 日志归档保留（真实语料，必须入库）
 !logs/archive/*.log
+
+# ★ dist/ 是 publish.ps1 的**产物**（两份 self-contained exe 共 136 MB），不入库。
+#   生成方式：pwsh -File engine\publish.ps1
+#   与 tools/**/bin 同理：构建产物忽略，生成脚本必须入库。
+dist/

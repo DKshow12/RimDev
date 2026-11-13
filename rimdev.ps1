@@ -50,6 +50,32 @@ function Get-Tfm([string] $layout) {
     }
 }
 
+# ★ Task 25：产物路径解析 —— 优先 dist（self-contained 发布版），回落 bin\Debug（开发版）。
+#
+#   为什么要优先 dist：发布版是**单文件自包含**的（约 74 MB，自带 .NET 运行时），
+#   拷到任何目录都能直接跑；Debug 版是 framework-dependent 的（162 KB），
+#   依赖旁边的 DLL —— 单独拿走会 exit 0x80008096（本机实测）。
+#
+#   为什么保留 Debug 回落：开发期只跑 build-all 就能试，不必每次 publish（要 2~3 分钟）。
+function Get-ProductPath([string] $layout) {
+    $tfm = Get-Tfm $layout
+    if ($null -eq $tfm) { return $null }
+    $distExe = Join-Path $root ('dist\{0}\rimdev.exe' -f $tfm)
+    if (Test-Path -LiteralPath $distExe) { return $distExe }
+    $debugExe = Join-Path $engine ('RimDev.Cli\bin\Debug\{0}\rimdev.exe' -f $tfm)
+    if (Test-Path -LiteralPath $debugExe) { return $debugExe }
+    return $null
+}
+
+function Get-ProductLabel([string] $layout) {
+    $tfm = Get-Tfm $layout
+    if ($null -eq $tfm) { return '（无可用产物）' }
+    if (Test-Path -LiteralPath (Join-Path $root ('dist\{0}\rimdev.exe' -f $tfm))) {
+        return ('dist\{0}\rimdev.exe（发布版）' -f $tfm)
+    }
+    return ('engine\RimDev.Cli\bin\Debug\{0}\rimdev.exe（开发版）' -f $tfm)
+}
+
 function Get-ProfileNode($profiles, [string] $name) {
     $node = $profiles.profiles.PSObject.Properties[$name]
     if ($null -eq $node) { return $null }
@@ -91,7 +117,7 @@ if ($rest.Count -ge 1 -and $rest[0] -eq 'profile') {
             $tfm = Get-Tfm $layout
             $mark = if ($name -eq $defaultName) { '*' } else { ' ' }
             $shown = if ([string]::IsNullOrWhiteSpace($gameRoot)) { '(未配置 gameRoot)' } else { $gameRoot }
-            $product = if ($null -eq $tfm) { '（无可用产物）' } else { "engine\RimDev.Cli\bin\Debug\$tfm\rimdev.exe" }
+            $product = Get-ProductLabel $layout
             Write-Host ("{0} {1,-6} layout={2,-10} product={3}" -f $mark, $name, $(if ($null -eq $layout) { '-' } else { $layout }), $product)
             Write-Host ("           gameRoot={0}" -f $shown)
             $ws = [string]$node.workshopRoot
@@ -144,9 +170,10 @@ if ($null -eq $tfm) {
               "也没有 <gameRoot>\Assembly-CSharp.dll）：$gameRoot。请确认 gameRoot 指向游戏根目录。")
 }
 
-$exe = Join-Path $engine ("RimDev.Cli\bin\Debug\{0}\rimdev.exe" -f $tfm)
-if (-not (Test-Path -LiteralPath $exe)) {
-    Exit-Env ("找不到 {0} 布局对应的产物: {1}。请先运行 engine\build-all.ps1 构建两套产物。" -f $layout, $exe)
+$exe = Get-ProductPath $layout
+if ($null -eq $exe) {
+    Exit-Env ("找不到 {0} 布局对应的产物。请先运行 engine\publish.ps1 生成 dist\{1}\rimdev.exe（发布版），" +
+              "或 engine\build-all.ps1 生成开发版。" -f $layout, $tfm)
 }
 
 # 让 env 能一眼看出「这次的数字属于哪次切换」。

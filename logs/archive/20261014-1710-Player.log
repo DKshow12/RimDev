@@ -1,0 +1,319 @@
+Mono path[0] = 'C:/Program Files (x86)/Steam/steamapps/common/RimWorld/RimWorldWin64_Data/Managed'
+Mono config path = 'C:/Program Files (x86)/Steam/steamapps/common/RimWorld/MonoBleedingEdge/etc'
+[PhysX] Initialized MultithreadedTaskDispatcher with 32 workers.
+Initialize engine version: 2022.3.35f1 (011206c7a712)
+[Subsystems] Discovering subsystems at path C:/Program Files (x86)/Steam/steamapps/common/RimWorld/RimWorldWin64_Data/UnitySubsystems
+GfxDevice: creating device client; threaded=1; jobified=0
+Direct3D:
+    Version:  Direct3D 11.0 [level 11.1]
+    Renderer: NVIDIA GeForce RTX 4070 Laptop GPU (ID=0x2860)
+    Vendor:   NVIDIA
+    VRAM:     7948 MB
+    Driver:   32.0.16.1714
+Begin MonoManager ReloadAssembly
+- Loaded All Assemblies, in  0.191 seconds
+- Finished resetting the current domain, in  0.001 seconds
+<RI> Initializing input.
+<RI> Input initialized.
+<RI> Initialized touch support.
+[PhysX] Initialized MultithreadedTaskDispatcher with 32 workers.
+UnloadTime: 1.465400 ms
+RimWorld 1.6.4871 rev591
+Created WorkshopItem for 3781143823 but there is no folder for it.
+Direct3D: detected that using refresh rate causes time drift. Will stop trusting refresh rate until the game window is moved.
+Direct3D: detected that vsync is broken (it does not limit frame rate properly). Delta time will now be calculated using cpu-side time stampling until the game window is moved.
+Created WorkshopItem for 3663186742 but there is no folder for it.
+Created WorkshopItem for 3538686242 but there is no folder for it.
+Mod  is missing supported versions list in About.xml! (example: <supportedVersions><li>1.0</li></supportedVersions>)
+Mod .agents is missing packageId in About.xml! (example: <packageId>AuthorName.ModName.Specific</packageId>)
+Mod  is missing supported versions list in About.xml! (example: <supportedVersions><li>1.0</li></supportedVersions>)
+Mod .vscode is missing packageId in About.xml! (example: <packageId>AuthorName.ModName.Specific</packageId>)
+Mod  is missing supported versions list in About.xml! (example: <supportedVersions><li>1.0</li></supportedVersions>)
+Mod 3534748687 is missing packageId in About.xml! (example: <packageId>AuthorName.ModName.Specific</packageId>)
+Mod  is missing supported versions list in About.xml! (example: <supportedVersions><li>1.0</li></supportedVersions>)
+Mod 3781005562 is missing packageId in About.xml! (example: <packageId>AuthorName.ModName.Specific</packageId>)
+Mod  is missing supported versions list in About.xml! (example: <supportedVersions><li>1.0</li></supportedVersions>)
+Mod ~ is missing packageId in About.xml! (example: <packageId>AuthorName.ModName.Specific</packageId>)
+Mod The Dead Man's Switch - Mobile Monster dependency (Srxf.DeadManSwitch.Legion) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod The Dead Man's Switch - Mobile Monster dependency (Aoba.DeadManSwitch.MobileDragoon) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod The Dead Man's Switch - Mobile Monster dependency (Aoba.DeadManSwitch.Core) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod The Dead Man's Switch - Mobile Monster dependency (Aoba.Exosuit.Framework) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod The Dead Man's Switch - Mobile Monster dependency (AOBA.Framework) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Starcraft Arsenal - CE dependency (Shanaki97.StarcraftArsenal) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Starcraft Arsenal - CE dependency (CETeam.CombatExtended) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Legion Vehicles : Acies Gravitatis zh dependency (Dogdough.AegisArmored) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Milira: Gene Ascension II v2.9.82 / 米莉拉：基因升华 II · 基因进化自动加载 dependency (Ancot.MiliraRaceGenePatch) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Milira: Gene Ascension II v2.9.82 / 米莉拉：基因升华 II · 基因进化自动加载 dependency (Ancot.MiliraRace) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 绮罗蹭饭扩展 (Kiiro Bum Meals Off Expanded) dependency (Ancot.KiiroStoryEventsExpanded) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 绮罗蹭饭扩展 (Kiiro Bum Meals Off Expanded) dependency (Ancot.AncotLibrary) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 绮罗蹭饭扩展 (Kiiro Bum Meals Off Expanded) dependency (Ancot.KiiroRace) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Nivarian Icecream Tail QWQ dependency (keeptpa.NivarianRace) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Nivarian Icecream Tail QWQ dependency (brrainz.harmony) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 载具炮塔位置修复补丁 | Vehicle Turret Fix dependency (SmashPhil.VehicleFramework) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 载具炮塔位置修复补丁 | Vehicle Turret Fix dependency (brrainz.harmony) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 灵能扩展:机械师战术协议 (Mechanitor Tactical Protocol) dependency (VanillaExpanded.VPsycastsE) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [AI 1.6]渡鸦血脉扩展(Raven Bloodline Expansion) dependency (ZuoYao.RavenRace) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Crop Rotation (轮作) dependency (brrainz.harmony) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Miho Archotech Mechanitor Armor dependency (miho.fortifiedoutremer) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Miho Archotech Mechanitor Armor dependency (aw.mech.helmets) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Ship HoloAI - Hologram Extensions dependency (chibi.shipholoai) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+XML error: <publishedFileId>3742034863</publishedFileId> doesn't correspond to any field in type ModMetaDataInternal. Context: <ModMetaData><name>光环 Aura</name><author>洪亭</author><packageId>YourName.Aura</packageId><description>
+    灵感来自流放之路（PoE），19 种光环特性，每种 3 级递进。
+
+    【12 个辐射光环】持有者 + 8~13 格内殖民者共享增益
+    迅捷 · 活力 · 精准 · 优雅 · 坚定 · 清晰
+    憎恨 · 纪律 · 狂怒 · 净化 · 极地装甲 · 血肉与岩石
+
+    【7 个 Debuff 光环】仅持有者生效，命中附加特效
+    寒冰之捷（低温症）· 灰烬之捷（点燃）· 闪电之捷（EMP）
+    苦痛之捷（中毒）· 血与沙（流血）
+    雷霆（雷击蓄能）· 愤怒（狂怒爆炸）
+
+    Inspired by Path of Exile. 19 traits × 3 tiers.
+    12 radiate to nearby colonists, 7 apply debuffs on hit.
+    Bilingual CN/EN. RimWorld 1.4–1.6.
+  </description><supportedVersions><li>1.6</li><li>1.5</li><li>1.4</li></supportedVersions><modDependencies><li><packageId>brrainz.harmony</packageId><displayName>Harmony</displayName><downloadUrl>https://github.com/pardeike/HarmonyRimWorld/releases</downloadUrl></li></modDependencies><publishedFileId>3742034863</publishedFileId></ModMetaData>
+Mod Miho Fix - RemoteRepairer & hyphenPrefix dependency (miho.fortifiedoutremer) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Gestatable Kraltech Militor Queen and Supreme Apocriton dependency (brrainz.harmony) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Gestatable Kraltech Militor Queen and Supreme Apocriton dependency (UnlimitedHugs.HugsLib) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Gestatable Kraltech Militor Queen and Supreme Apocriton dependency (OskarPotocki.VanillaFactionsExpanded.Core) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Wolfein Chocolate Delicacies-沃芬族巧克力佳肴 dependency (MelonDove.WolfeinRace) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Work History - 简体中文汉化 dependency (lebek.workhistory) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod RimWorld Agent dependency (codexvn.rimworld.mcp) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod RimWorld Agent dependency (brrainz.harmony) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod RimWorld MCP dependency (brrainz.harmony) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod RimWorld Agent UI dependency (brrainz.harmony) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 闪毁扩展植入物机械族植入 dependency (qiuci.GD5.Expansion) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 植入物改造为机械族植入物 dependency (brrainz.harmony) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [MCW]自动深钻井-神话矿石扩展补丁 dependency (Bart.MTOR) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [MCW]自动深钻井-神话矿石扩展补丁 dependency (OTW.ResourcesBorehole) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod DamageProfile - 通用种族伤害配置框架 dependency (brrainz.harmony) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod MuGirlRace - Combat Extended 兼容补丁 dependency (erdelf.humanoidalienraces) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod MuGirlRace - Combat Extended 兼容补丁 dependency (CETeam.CombatExtended) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod MuGirlRace - Combat Extended 兼容补丁 dependency (HAR.MuGirlRace) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod More Useful Materials Expansion dependency (CN.MoreUsefulMaterials) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Mod 兼容性检查器 (Mod Compatibility Checker) dependency (brrainz.harmony) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Mobile Fortress Compat - UF Heavy Industries dependency (KindSeal.LOL) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Mobile Fortress Compat - UF Heavy Industries dependency (DiZhuan.SRALib) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Mobile Fortress Compat - UF Heavy Industries dependency (greyoviin.mobilefortress) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Draconis Koelime Fix dependency (Draconis.Koelime) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Draconis Koelime Fix dependency (brrainz.harmony) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Nice Inventory Tab CE Integration dependency (andromeda.niceinventorytab) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 战舰少女2.0CE补丁 dependency (CETeam.CombatExtended) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 战舰少女2.0CE补丁 dependency (WarshipGirlR.AlienRaces.RogueServitor.Mechanoids.Faction) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod More Twisted Mutations dependency (brrainz.harmony) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Soul Land: Soul Beasts (斗罗大陆: 魂兽扩展) dependency (Qian.SoulLand.Exp.MartialSouls) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Milian Modification:SOS2 EVA Module dependency (Ancot.AncotLibrary) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Milian Modification:SOS2 EVA Module dependency (kentington.saveourship2) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Milian Modification:SOS2 EVA Module dependency (Ancot.MilianModification) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Milian Modification:SOS2 EVA Module dependency (Ancot.MiliraRace) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod CE Ammo Coordinator dependency (CETeam.CombatExtended) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod VPE - Veincaster 汉化 dependency (VPE.Veincaster.Sentinel) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 荷鲁斯的沃芬帝国拓展 dependency (Ariandel.AriandelLibrary) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Gravship Conquest- RimSkyBlockDLC dependency (Yexiaoyang.RimSkyBlock) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod RimThunder - Westline Green (CE Edition) dependency (CETeam.CombatExtended) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod RimThunder - Westline Green (CE Edition) dependency (SmashPhil.VehicleFramework) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod True Full Auto dependency (brrainz.harmony) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 青茗的叙事者【Qing's Storyteller】 dependency (Qing.More.Traits2) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 虾仁水饺？！(KoelimeShrimp) dependency (Draconis.Koelime) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 虾仁水饺？！(KoelimeShrimp) dependency (erdelf.HumanoidAlienRaces) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 勇者血脉 dependency (Ancot.KiiroRace) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 更多远古城市废墟高价值战利品 has a dependency (XMB.AncientUrbanrUins.MO) with empty display name.
+Mod 更多远古城市废墟高价值战利品 dependency (XMB.AncientUrbanrUins.MO) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]Faith Framework中文汉化 dependency (emitbreaker.Faith.Framework) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Death Guard中文汉化 dependency (emitbreaker.MIM.WH40k.CSM.DG) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM - WH40k Core中文汉化 dependency (emitbreaker.MIM.WH40k.Core) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]Void born Xenotype中文汉化 dependency (emitbreaker.MIM.WH40k.Voidborn) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM - WH40k Weapons中文汉化 dependency (emitbreaker.MIM.WH40k.Weapons) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM - WH40k Anomaly中文汉化 dependency (emitbreaker.MIM.WH40k.Anomaly) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM - WH40k Augmetics中文汉化 dependency (emitbreaker.MIM.WH40k.WnG.Cybernetics) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM - WH40k Drugs and Consumables中文汉化 dependency (emitbreaker.MIM.WH40k.Drugs) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM - WH40k Ideology中文汉化 dependency (emitbreaker.MIM.WH40k.Ideology) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Ultramarines中文汉化 dependency (emitbreaker.MIM.WH40k.AA.UM) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k White Scars中文汉化 dependency (emitbreaker.MIM.WH40k.AA.WS) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k World Eaters 中文汉化 dependency (emitbreaker.MIM.WH40k.CSM.WE) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Blood Angels 中文汉化 dependency (emitbreaker.MIM.WH40k.AA.BA) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Iron Hands中文汉化 dependency (emitbreaker.MIM.WH40k.AA.IH) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Salamanders 中文汉化 dependency (emitbreaker.MIM.WH40k.AA.SA) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM - WH40k Psycast中文汉化 dependency (emitbreaker.MIM.WH40k.Psycast) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Black Templars中文汉化 dependency (emitbreaker.MIM.WH40k.AA.BT) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Crimson Fists中文汉化 dependency (emitbreaker.MIM.WH40k.AA.CF) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM - WH40k Royalty中文汉化 dependency (emitbreaker.MIM.WH40k.Royalty) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM - WH40k Adeptus Ministorum中文汉化 dependency (emitbreaker.MIM.WH40k.AdeptusMinistorum) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Carcharodons中文汉化 dependency (emitbreaker.MIM.WH40k.AA.CC) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Holy Orders of the Emperor's Inquisition中文汉化 dependency (emitbreaker.MIM.WH40k.IG.IQ) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Imperial Fists中文汉化 dependency (emitbreaker.MIM.WH40k.AA.IF) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Necron Core中文汉化 dependency (emitbreaker.MIM.WH40k.NC.Core) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Order of Our Martyred Lady中文汉化 dependency (emitbreaker.MIM.WH40k.AS.OML) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Order of the Bloody Rose中文汉化 dependency (emitbreaker.MIM.WH40k.AS.OBR) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Sautekh中文汉化 dependency (emitbreaker.MIM.WH40k.NC.SA) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Szarekhan中文汉化 dependency (emitbreaker.MIM.WH40k.NC.SZ) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]Sustainable Toxic Environment中文汉化 dependency (emitbreaker.MIM.WH40k.Tox.Core) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Adeptus Astartes Core中文汉化 dependency (emitbreaker.MIM.WH40k.AA.Core) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Minotaurs中文汉化 dependency (emitbreaker.MIM.WH40k.AA.MN) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Armors of the Imperium中文汉化 dependency (emitbreaker.MIM.WH40k.IG.Core) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Chaos Core中文汉化 dependency (emitbreaker.MIM.WH40k.CH.Core) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Night Lords中文汉化 dependency (emitbreaker.MIM.WH40k.CSM.NL) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Orks Core中文汉化 dependency (emitbreaker.MIM.WH40k.OK.Core) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Genestealer Cult Core中文汉化 dependency (emitbreaker.MIM.WH40k.GC.Core) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k The Hivecult中文汉化 dependency (emitbreaker.MIM.WH40k.GC.HC) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Adepta Sororitas Core中文汉化 dependency (emitbreaker.MIM.WH40k.AS.Core) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Chaos Cult中文汉化 dependency (emitbreaker.MIM.WH40k.CSM.CC) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Fallen Angels中文汉化 dependency (emitbreaker.MIM.WH40k.CSM.FA) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Space Wolves中文汉化 dependency (emitbreaker.MIM.WH40k.AA.SW) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Thousand Sons中文汉化 dependency (emitbreaker.MIM.WH40k.CSM.TS) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Raven Guard中文汉化 dependency (emitbreaker.MIM.WH40k.AA.RG) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Aeldari Core中文汉化 dependency (emitbreaker.MIM.WH40k.AE.Core) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [ZH]MIM Warhammer 40k Dark Angels中文汉化 dependency (emitbreaker.MIM.WH40k.AA.DA) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Ponpeco Furnitures : Sci-Fi简中汉化的补充 dependency (ponpeco.PFSF) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 耗子托孤（Ratkin Orphan） dependency (brrainz.harmony) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 耗子托孤（Ratkin Orphan） dependency (fxz.Solaris.RatkinRaceMod.odyssey) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod RimTalk - Expand Toddlers dependency (cyanobot.toddlers) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod RimTalk - Expand Toddlers dependency (cj.rimtalk) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 瓦莱丽的黑米鸭-Valerie's Black Milira Duck dependency (Ancot.MiliraRace) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod RimHUD_LyEx[1.6] 绿叶的RimHUD小拓展 dependency (Jaxe.RimHUD) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Chanai Manufactory - KAC PDW dependency (CETeam.CombatExtended) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Milira : Lustrewing Industry Style Pack dependency (ancot.milirarace) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 【CA】地图多层框架 Map Level Framework dependency (brrainz.harmony) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod One-Click Mine! dependency (brrainz.harmony) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Wood's 2035 weapons loot add to ancient urban ruin has a dependency (killerbot.armagear) with empty display name.
+Mod Wood's 2035 weapons loot add to ancient urban ruin dependency (killerbot.armagear) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Wood's 2035 weapons loot add to ancient urban ruin has a dependency (xmb.ancienturbanruins.mo) with empty display name.
+Mod Wood's 2035 weapons loot add to ancient urban ruin dependency (xmb.ancienturbanruins.mo) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod RimTalk+The Forbbiden One dependency (rim.job.world) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Progression：Education课程预设 dependency (ferny.ProgressionEducation) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Ghoul Prosthetics CHS dependency (metalocif.ghoulprosthetics) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 一键全员敌对 (Make Everyone Hostile) dependency (brrainz.harmony) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Rimtalk预设提示词优化 dependency (cj.rimtalk) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod RimTalk - Expand Literature dependency (cj.rimtalk) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 特性工作台 dependency (brrainz.harmony) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Milira Halo activator dependency (Ancot.MiliraRace) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Milira Drone Do More Work has a dependency (Ancot.MiliraRace) with empty display name.
+Mod Milira Drone Do More Work dependency (Ancot.MiliraRace) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Milira SunLightGatheringTower Patch has a dependency (Ancot.MiliraRace) with empty display name.
+Mod Milira SunLightGatheringTower Patch dependency (Ancot.MiliraRace) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Ratkin Gene Expanded dependency (EoralMilk.PawnTextureOffsetAdjuster) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod pphhyy's Tox Weapons CE Patches dependency (pphhyy.ToxWeapons) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod [AA] Railguns dependency (CETeam.CombatExtended) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod AOTC Reimagined dependency (VanillaExpanded.BaseGeneration) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 绮罗边缘战争适配Rim War Kiiro Patch dependency (Ancot.KiiroRace) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 绮罗边缘战争适配Rim War Kiiro Patch dependency (torann.rimwar) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 鼠族边缘战争适配Rim War Ratkin Patch dependency (fxz.solaris.ratkinracemod.odyssey) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 鼠族边缘战争适配Rim War Ratkin Patch dependency (torann.rimwar) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Forced Xenogerm Implantation dependency (brrainz.harmony) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod BlueArchive-NewWorld dependency (Chezhou.ChezhouLib.lib) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 明日方舟-恐惧如潮 dependency (GSWT.FrameworkaboutArknights) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 御械型无畏战棺 - 简体汉化 dependency (Kierannkkt.MechlordWarcasket) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 战舰少女RCE适配补丁 WarShipGirl R CE Patches dependency (CETeam.CombatExtended) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 美狐边缘战争适配Rim War Miho Patch dependency (miho.fortifiedoutremer) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 美狐边缘战争适配Rim War Miho Patch dependency (torann.rimwar) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 失能机关边缘战争适配Rim War DMS Patch dependency (Aoba.DeadManSwitch.Core) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod 失能机关边缘战争适配Rim War DMS Patch dependency (torann.rimwar) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod VPE - Biohazard | Biosoother灵能扩展：生化灾变 | 生态净化汉化中文包 has a dependency with no <packageId> specified.
+Mod VPE - Biohazard | Biosoother灵能扩展：生化灾变 | 生态净化汉化中文包 has a dependency () with empty display name.
+Mod VPE - Biohazard | Biosoother灵能扩展：生化灾变 | 生态净化汉化中文包 dependency () needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod VPE - Anima灵能树扩展汉化中文包 has a dependency with no <packageId> specified.
+Mod VPE - Anima灵能树扩展汉化中文包 has a dependency () with empty display name.
+Mod VPE - Anima灵能树扩展汉化中文包 dependency () needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod VPE - Bugmancer灵能扩展：虫群主宰汉化中文包 has a dependency with no <packageId> specified.
+Mod VPE - Bugmancer灵能扩展：虫群主宰汉化中文包 has a dependency () with empty display name.
+Mod VPE - Bugmancer灵能扩展：虫群主宰汉化中文包 dependency () needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Realistic Humansounds HAR Patch dependency (Mlie.RealisticHumanSounds) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Biotech Expansion - Mammalia简体中文汉化包 dependency (biotexpans.core) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Milira Drone Do More Work Plus has a dependency (Ancot.MiliraRace) with empty display name.
+Mod Milira Drone Do More Work Plus dependency (Ancot.MiliraRace) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod UFHI Ratkin Knights+ has a dependency (KindSeal.LOL) with empty display name.
+Mod UFHI Ratkin Knights+ dependency (KindSeal.LOL) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Vanilla Quests Expanded - Ancients 先行简中汉化 dependency (vanillaquestsexpanded.ancients) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Combat Extended - Infinite Ammo dependency (CETeam.CombatExtended) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod RimTalk JSON & Color Fix dependency (cj.rimtalk) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Cybranian - Terraforming Asteroids_汉化 dependency (DimonSever000.TerraformingAsteroids) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Biotech Expansion - Mythic简体中文汉化包 dependency (biotexpans.core) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Destroy Item Hardcode Patch dependency (Garwel.DestroyItem) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Wood's Muzzle Flash for Ancient urban ruins has a dependency (issaczhuang.muzzleflash) with empty display name.
+Mod Wood's Muzzle Flash for Ancient urban ruins dependency (issaczhuang.muzzleflash) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Wood's Muzzle Flash for Ancient urban ruins has a dependency (xmb.ancienturbanruins.mo) with empty display name.
+Mod Wood's Muzzle Flash for Ancient urban ruins dependency (xmb.ancienturbanruins.mo) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Wood's Muzzle Flash for Cinders of the Embergarden has a dependency (issaczhuang.muzzleflash) with empty display name.
+Mod Wood's Muzzle Flash for Cinders of the Embergarden dependency (issaczhuang.muzzleflash) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Mod Wood's Muzzle Flash for Cinders of the Embergarden has a dependency (BreadMo.Cinders) with empty display name.
+Mod Wood's Muzzle Flash for Cinders of the Embergarden dependency (BreadMo.Cinders) needs to have <downloadUrl> and/or <steamWorkshopUrl> specified.
+Fallback handler could not load library C:/Program Files (x86)/Steam/steamapps/common/RimWorld/RimWorldWin64_Data/MonoBleedingEdge/data-0000026B29180010.dll
+Fallback handler could not load library C:/Program Files (x86)/Steam/steamapps/common/RimWorld/RimWorldWin64_Data/MonoBleedingEdge/data-0000026B39795140.dll
+[BetterModSort] Harmony patches applied.
+Fallback handler could not load library C:/Program Files (x86)/Steam/steamapps/common/RimWorld/RimWorldWin64_Data/MonoBleedingEdge/data-0000026B40B38010.dll
+[HugsLib] version 12.0.0
+[drone_combat] initialized; Harmony patches applied.
+[One简中自动化][Api] LoadForEditing 失败，回退默认配置: DirectoryNotFoundException Could not find a part of the path "C:\Users\21596\AppData\Local\0w1r.RimWorldTranslation\api.json".
+[One简中自动化][Api] LoadForEditing 失败，回退默认配置: DirectoryNotFoundException Could not find a part of the path "C:\Users\21596\AppData\Local\0w1r.RimWorldTranslation\api.json".
+[One简中自动化][Skipper] registered=0 providers; languageFiles=0; lastInjectionSucceeded=True
+[One简中自动化] Single-layer language ownership installed before language metadata initialization. (SHA-256 853E42CC9FC501242AD3F304E52318CFFAF797CFA4566B3029E76B6235A8F4AB)
+[One简中自动化][Scan][Barrier] 内容包就绪：启动扫描转后台线程（非 Def 段并行窗开启）
+[One简中自动化][Scan][Timing] phase=manifest-read; ms=1
+[One简中自动化][Scan][Timing] phase=manifest-parse; ms=5
+[One简中自动化][Scan][Timing] phase=manifest-records; ms=4
+ScanSnapshotStore: 快照 fast 反序列化失败 #1（fail-closed 转全扫，legacy 对照路径生产禁用）: 严格校验失败
+ScanSnapshotStore: 快照损坏已隔离: C:/Users/21596/AppData/LocalLow/Ludeon Studios/RimWorld by Ludeon Studios\0w1r.RimTranslation\scan-snapshot.json
+[One简中自动化][Scan][Timing] phase=manifest-read; ms=1
+[One简中自动化][Scan][Timing] phase=manifest-parse; ms=5
+[One简中自动化][Scan][Timing] phase=manifest-records; ms=5
+[One简中自动化][Snapshot] 快照不可用（缺失或损坏已隔离），走全扫
+[One简中自动化][Health] generation 不一致，触发全扫重建 ownership/snapshot：storeGen=0 ownershipGen=13 snapshotGen=0 locksGen=0 files=source-ownership.json, scan-snapshot.json needFullRescan=True storeInternalMismatch=False
+[One简中自动化][Scan][RuntimeSlice] worldKeyStable=0 reuseIfEnabled=15 rebuildIfEnabled=2 members=17 official=6 keyFail=0 ms=10 world=55D6AA4F shape=36246DE6 prevWorld=CE144ACD prevShape=75EC6AAC
+[One简中自动化][Scan][RuntimeSlices] full=0 reuse=9 fresh=1 demoted=0 universe=10 ms=19
+[One简中自动化][Scan][RuntimeAudit] selected=com.bettermodsort.rimworld; streak=3
+[BetterModSort] Collected Verse.NamedArgument[] Patch xpath mappings
+[One简中自动化][Scan][Slices] reuse=6 rebuild=4 entriesFromSlice=2353 ms=2019 saveEstimate=720
+[One简中自动化][Scan][Timing] phase=tier1-inactive-precollect; ms=2082
+[One简中自动化][Scan][Precollect] inactive=3962; reused=0; ms=2083
+[One简中自动化][Dll] discovery noTarget=23（本体未安装/未启用，已销毁不参与加载）: addvans.wasdedpawn.zh[G0✓G1✓G2✓G5(3/6)✓G3(ExplicitDeps)✓G4✓], blackphoenix.gitm.zh[G0✓G1✓G2✓G5(4/6)✓G3(ExplicitDeps)✓G4✓], cn.zhuzijun.energyshieldcecompat[G0✓G1✓G2(mixed)✓G5(2/6)✓G3(ExplicitDeps)✓G4✓], craftableodysseytraps.sentinel.zh[G0✓G1✓G2✓G5(2/6)✓G3(Segments)✓G4✓], dingzhen.levelthis[G0✓G1✓G2(mixed)✓G5(2/6)✓G3✗(target is hanhua pack)], fruitytrump.chinesepack.7f.alienworlds[G0✓G1✓G2✓G5(3/6)✓G3(ExplicitDeps)✓G4✓], kapa.pawnnamezh[G0✓G1✓G2✓G5(3/6)✓G3(ExplicitDeps)✓G4✓], kenzej.multiconstruction.zh[G0✓G1✓G2✓G5(2/6)✓G3(ExplicitDeps)✓G4✓], kongkim.unwaveringpersuasion.zh[G0✓G1✓G2✓G5(4/6)✓G3(ExplicitDeps)✓G4✓], lan.rimworldtogether.zh[G0✓G1✓G2✓G5(3/6)✓G3(ExplicitDeps)✓G4✓], lezhizhong.babybadhands[G0✓G1✓G2(mixed)✓G5(2/6)✓G3✗(segments tie)], lezhizhong.mouse.disaster.famine[G0✓G1✓G2✓G5(2/6)✓G3(ExplicitDeps)✓G4✓], lezhizhong.tailgrab[G0✓G1✓G2✓G5(2/6)✓G3✗(segments tie)], maiya.labelsonfloorchinesepatch[G0✓G1✓G2✓G5(4/6)✓G3(ExplicitDeps)✓G4✓], metalocif.skyislands.zh[G0✓G1✓G2✓G5(3/6)✓G3(ExplicitDeps)✓G4✓], moqi.telefonmast.graphicssettings.zh[G0✓G1✓G2✓G5(4/6)✓G3(Segments)✓G4✓], niz.xenomorphtype.zh[G0✓G1✓G2✓G5(4/6)✓G3(ExplicitDeps)✓G4✓], r3zn.lee.theforce.lightsaber.zh[G0✓G1✓G2✓G5(4/6)✓G3(ExplicitDeps)✓G4✓], redmattis.betterchildren.zh[G0✓G1✓G2✓G5(2/6)✓G3(ExplicitDeps)✓G4✓], wsh.rimpawnchinesename[G0✓G1✓G2✓G5(3/6)✓G3(Segments)✓G4✓], zh.kahdeg.killfeed[G0✓G1✓G2✓G5(3/6)✓G3(ExplicitDeps)✓G4✓], zh.nals.dynamicportraits[G0✓G1✓G2✓G5(2/6)✓G3(ExplicitDeps)✓G4✓], zhule.betterdevmode[G0✓G1✓G2(mixed)✓G5(2/6)✓G3✗(no shared rare segment)]
+[One简中自动化][Dll] discovery mode=scan mods=3979 candidates=0 autoEligible=0 noTargetDropped=23 collectFailed=0 elapsedMs=1009
+[One简中自动化][ShortWord][EvidenceCache] loadMs=16; state=Loaded; mvids=46; fileKB=544
+[One简中自动化][Scan][Timing] phase=manifest-read; ms=2
+[One简中自动化][Scan][Timing] phase=manifest-parse; ms=4
+[One简中自动化][Scan][Timing] phase=manifest-records; ms=5
+[One简中自动化][Scan][ProviderCache] hits=3976; misses=157; rows=3962
+[One简中自动化][Scan][DefTypeExcluded] defs=1256; types=3
+[One简中自动化][Scan][TraversalProbes] wall=69ms; leaf=318ms (460%); remainder=-249ms (GC停顿/分配锁/递归骨架)
+[One简中自动化][Scan][TraversalProbes] getValue=12ms; pathBuild=5ms; tkey=13ms; callback(含SHA+条目分配)=255ms; snapshot=30ms
+[One简中自动化][Scan][TraversalProbes] snapshotTop: ThingDef.comps=8ms/324个 FactionDef.maxPawnCostPerTotalPointsCurve=2ms/9个 PawnKindDef.existingDamage=2ms/0个 ResearchProjectDef.prerequisites=2ms/12个 FactionDef.colorSpectrum=1ms/3个
+[One简中自动化][Scan][RuntimeParallelProfile] wall=69ms; defs=172; defTypes=9; gc0=+0; heap=+2MB
+[One简中自动化][Scan][RuntimeParallelProfile] top: Verse.ThingDef=1361ms Verse.PawnKindDef=297ms Verse.RecipeDef=135ms ThreatFleet.TF_FighterWingDef=107ms RimWorld.FactionDef=88ms Verse.ResearchProjectDef=77ms RimWorld.IncidentDef=71ms Verse.HediffDef=65ms
+[One简中自动化][Scan][RuntimeAudit] package=com.bettermodsort.rimworld; sliceRows=0; liveRows=0; match=1
+[One简中自动化][Scan][Prefilter] candidates=3173; passed=14; rejected=3159; byV16=3159; byDeps=0; bySeg=0; unknown=0; evidence=0; ms=2405
+[One简中自动化][Scan][Bind][Skipped] provider=com.bettermodsort.rimworld; declared=[brrainz.harmony]; inSourcePackages=[]; sourcePackagesCount=6
+[One简中自动化][Scan][Bind][Skipped] provider=brrainz.visualexceptions; declared=[brrainz.harmony]; inSourcePackages=[]; sourcePackagesCount=6
+[One简中自动化][Scan][Bind][Skipped] provider=kearril.rimsearcherdatamod; declared=[Ludeon.RimWorld,Ludeon.RimWorld.Royalty,Ludeon.RimWorld.Ideology,Ludeon.RimWorld.Biotech,Ludeon.RimWorld.Odyssey]; inSourcePackages=[]; sourcePackagesCount=6
+[One简中自动化][Scan][Bind][Skipped] provider=unlimitedhugs.hugslib; declared=[brrainz.harmony,Ludeon.RimWorld,Ludeon.RimWorld.Royalty,Ludeon.RimWorld.Ideology,Ludeon.RimWorld.Biotech,Ludeon.RimWorld.Anomaly]; inSourcePackages=[]; sourcePackagesCount=6
+[One简中自动化][Scan][Bind][Skipped] provider=sakurakoujiruna.dronetest.funnels; declared=[brrainz.harmony,ludeon.rimworld.biotech,ludeon.rimworld.royalty,ludeon.rimworld.ideology,ludeon.rimworld.odyssey,ancot.milirarace,ancot.milianmodification,sleepycot.wingsofdemocracy]; inSourcePackages=[]; sourcePackagesCount=6
+[One简中自动化][Scan][Bind][Skipped] provider=dsh.threatfleet.fragments; declared=[brrainz.harmony,ludeon.rimworld.biotech,UnlimitedHugs.HugsLib,sakurakoujiruna.dronetest.funnels,ludeon.rimworld,ludeon.rimworld.royalty,ludeon.rimworld.ideology,ludeon.rimworld.anomaly,ludeon.rimworld.odyssey]; inSourcePackages=[UnlimitedHugs.HugsLib,sakurakoujiruna.dronetest.funnels]; sourcePackagesCount=6
+[One简中自动化][Scan][Bind][Skipped] provider=void.charactereditor; declared=[brrainz.harmony,Ludeon.RimWorld,Ludeon.RimWorld.Royalty,Ludeon.RimWorld.Ideology,Ludeon.RimWorld.Biotech,Ludeon.RimWorld.Anomaly,UnlimitedHugs.HugsLib]; inSourcePackages=[UnlimitedHugs.HugsLib]; sourcePackagesCount=6
+[One简中自动化][Scan][Bind][Skipped] provider=nb.charactereditor.chinese; target=void.charactereditor; reason=authority-matches-0
+[One简中自动化][Scan][Bind][Skipped] provider=void.charactereditor.zhpatch; target=void.charactereditor; reason=authority-matches-0
+[One简中自动化][Scan][Bind] virtual providers=789; cached=2; prebound=0; probed=4; negative=783
+[One简中自动化][Scan][Tier1Guard] hit=789; fallback=0
+[One简中自动化][Scan][Bind] 新绑定对目标并入重建域: void.charactereditor
+[One简中自动化][Scan][CandidateAccept] candidates=221090; accepted=2276; topRejections=没有绑定目标中的权威原文=218804; XML/Rich Text 标签事件序列不一致（缺源标签 b）=4; grammar token 不一致（缺第1个 [Raw error text and stack trace]）=3
+[One简中自动化][Scan][ProgramPathFilter] filteredStrong=21 filteredWeak=0
+[One简中自动化][Scan][Dirty] files=2034; sample=C:/Program Files (x86)/Steam/steamapps/common/RimWorld/Mods/!Translation_AI_Pack/Languages/ChineseSimplified/Keyed/acid_combatproficiency_CombatProficiency.xml | C:/Program Files (x86)/Steam/steamapps/common/RimWorld/Mods/!Translation_AI_Pack/Languages/ChineseSimplified/Keyed/amch_savefilecompression_SaveFileCompression.xml | C:/Program Files (x86)/Steam/steamapps/common/RimWorld/Mods/!Translation_AI_Pack/Languages/ChineseSimplified/Keyed/aoba_deadmanswitch_ancientcorps_KeyedFile.xml
+[One简中自动化] OfficialGlossary: editable copy loaded (76 terms; seed 76).
+[One简中自动化][Scan][StorePhase] phase=merge-stores-parallel; wall=32ms read=20ms parse=7ms validate=38ms sum=66ms eff=206%
+[One简中自动化][Scan][StoreGC] phase=merge-stores-parallel; gc=+0 heap=+0MB
+[One简中自动化][Scan][FlatPhase] phase=merge-flat; wall=9ms filter=1ms hash=0ms contract=1ms decider=1ms sweep=0ms sum=4ms storeMatch=233 candidates=233
+[One简中自动化][Snapshot][Published] revision=1; catalogEntries=2353; translatedEntries=1786; managedSources=6; corruptStores=0
+[One简中自动化][Scan][Dirty] mirror copy failed (skip): C:/Program Files (x86)/Steam/steamapps/common/RimWorld/Mods/!Translation_AI_Pack/Languages/ChineseSimplified/DefInjected/DesignatorDropdownGroupDef/warshipgirlr_alienraces_rogueservitor_mechanoids_faction_AutoTranslated.xml -> AtomicFileException
+[One简中自动化][Scan][Dirty] mirror copy failed (skip): C:/Program Files (x86)/Steam/steamapps/common/RimWorld/Mods/!Translation_AI_Pack/Languages/ChineseSimplified/DefInjected/GeneCategoryDef/warshipgirlr_alienraces_rogueservitor_mechanoids_faction_AutoTranslated.xml -> AtomicFileException
+[One简中自动化][Scan][Dirty] mirror copy failed (skip): C:/Program Files (x86)/Steam/steamapps/common/RimWorld/Mods/!Translation_AI_Pack/Languages/ChineseSimplified/DefInjected/ResearchProjectDef/warshipgirlr_alienraces_rogueservitor_mechanoids_faction_AutoTranslated.xml -> AtomicFileException
+[One简中自动化][Scan][Dirty] mirror copy failed (skip): C:/Program Files (x86)/Steam/steamapps/common/RimWorld/Mods/!Translation_AI_Pack/Languages/ChineseSimplified/DefInjected/ResearchTabDef/warshipgirlr_alienraces_rogueservitor_mechanoids_faction_AutoTranslated.xml -> AtomicFileException
+[One简中自动化][Scan][Dirty] mirror copy failed (skip): C:/Program Files (x86)/Steam/steamapps/common/RimWorld/Mods/!Translation_AI_Pack/Languages/ChineseSimplified/DefInjected/StyleItemCategoryDef/warshipgirlr_alienraces_rogueservitor_mechanoids_faction_AutoTranslated.xml -> AtomicFileException
+[One简中自动化][Scan][Dirty] mirror copy failed (skip): C:/Program Files (x86)/Steam/steamapps/common/RimWorld/Mods/!Translation_AI_Pack/Languages/ChineseSimplified/DefInjected/ThingCategoryDef/warshipgirlr_alienraces_rogueservitor_mechanoids_faction_AutoTranslated.xml -> AtomicFileException
+[One简中自动化][Scan][Dirty] mirror inputs=2034; copied=1; unchanged=2024; deleted=0; copyFailed=6; unmatched=0; skippedTargetDisabled=0; skippedRunningSelf=0; skippedUnmapped=3; expected=2031
+[One简中自动化][Scan][Dirty] 红条置位（mirror copied=1 → 部分翻译待重启后生效）
+[One简中自动化][LoadOrderGuard] About loadAfter 已同步（自动排序依据，mod 列表排序后下次启动生效）: harmony 基座 + 2 个顺序敏感 target: com.bettermodsort.rimworld, unlimitedhugs.hugslib
+[One简中自动化][Scan][Timing] phase=tier1-running; ms=6
+[One简中自动化][Scan][Timing] phase=tier1-inactive; ms=1324
+ScanSnapshotStore: wrote 3166178 bytes (0.2% of 1280MiB budget)
+[One简中自动化][Scan][Barrier] join=completed; total=24649ms; overlap=4963ms; barrierWait=19686ms; concurrency=20.1%; gateReached=1（主通路正常 join；非 Def 段已在后台与游戏加载并行）
+[One简中自动化][Scan][Completed] packages=6; providerBindings=3; runtimeDefs=172; runtimeDefsSkipped=0; files=2043; filesSkipped=373; entriesSkipped=0; entries=2353; candidates=221090; acceptedCandidates=2276; missingEligible=106
+[One简中自动化] Applied Keyed+DefInjected before implied defs (revision 1; keyed=1043; defInjected=743).
+[One简中自动化][MainThreadDispatch] 泵停摆: pending=1 最老等待=30s longEvent=True（worker 对主线程的同步等待将超时取消并重试）

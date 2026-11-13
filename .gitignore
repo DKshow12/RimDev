@@ -1,0 +1,11 @@
+# 构建产物
+engine/**/bin/
+engine/**/obj/
+.probe/
+
+# 索引缓存与报告（可重建）
+cache/
+reports/
+
+# 日志归档保留（真实语料，必须入库）
+!logs/archive/*.log

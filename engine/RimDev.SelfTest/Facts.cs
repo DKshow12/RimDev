@@ -17,4 +17,18 @@ public static class Facts
     public const int ThingDefAllFieldCount = 275;
 
     public const int WorkshopModDirCount = 3967;
+
+    // ===== 第 2 期：目录表与 Def 语料（2026-10-14 实测）=====
+    /// <summary>Mods\ + Data\ + workshop\ 的候选目录总数。</summary>
+    public const int CandidateModDirCount = 3984;
+    /// <summary>能解析出 packageId 的 mod 数（其余 13 个目录没有 About.xml）。</summary>
+    public const int ModsWithPackageId = 3971;
+    /// <summary>用 XML 感知提取后，真正的 packageId 重复数 = 0。</summary>
+    public const int RealDuplicatePackageIdCount = 0;
+    /// <summary>ModsConfig.xml 的 activeMods 条数。</summary>
+    public const int ActiveModCount = 17;
+    /// <summary>启用集合里 Defs/Patches 的 XML 文件数。</summary>
+    public const int ActiveModXmlFileCount = 6340;
+    /// <summary>全库 *\1.6\Defs\*.xml 的文件数。</summary>
+    public const int AllLibraryDefFileCount = 32694;
 }

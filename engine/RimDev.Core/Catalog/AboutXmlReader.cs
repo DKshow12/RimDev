@@ -35,10 +35,17 @@ public static class AboutXmlReader
             doc.Load(aboutPath);
 
             var root = doc.DocumentElement;
-            if (root is null || root.Name != "ModMetaData")
+            if (root is null)
                 return new AboutInfo("", "", Array.Empty<string>(), Array.Empty<string>(),
-                    Array.Empty<string>(), Array.Empty<string>(),
-                    $"根元素不是 <ModMetaData>（实际 <{root?.Name}>）");
+                    Array.Empty<string>(), Array.Empty<string>(), "About.xml 是空文档");
+
+            // ★ 刻意【不检查根元素名】（IL 级实测证据）：
+            //   全程序集扫描显示，Assembly-CSharp.dll 里含字面量 "ModMetaData" 的**方法数为 0**
+            //   —— 若 RimWorld 比较过根元素名（如 xmlRoot.Name == "ModMetaData"），必然存在这个字面量。
+            //   它只做 Path.Combine(modRoot, "About", "About.xml")（Verse.ModMetaData.Init 里有 "About"/"About.xml"
+            //   两个字符串），然后把 DocumentElement 交给字段映射——而字段映射只按【子元素名】取值。
+            //   后果：实测有 **26 个**工坊 mod 的根元素写成小写 <modMetaData>（如 2122675053 shavius.yayocombat3.zh），
+            //   它们能被游戏正常加载。若在此做大小写敏感校验，会把这 26 个 mod 全部丢弃（3971 → 3945）。
 
             // ★ 关键：在**直接子节点**上取（XPath 的 child 轴）。
             //   不要用 GetElementsByTagName / XPath "//" / 正则——它们都会命中

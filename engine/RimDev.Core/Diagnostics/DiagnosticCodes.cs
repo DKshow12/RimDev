@@ -27,4 +27,17 @@ public static class Codes
 
     // RD9xxx 反模式规则包（v1 只实现可离线判定的成员相关项）
     public const string CustomXmlLoaderInfo = "RD4008";
+
+    // ===== 第 2 期 =====
+    // RD2xxx Def 结构与加载
+    public const string XmlParseFailed = "RD2001";
+    public const string CommentContainsDoubleDash = "RD2002";
+    public const string DefNameMissing = "RD2003";
+    public const string DefNameDuplicate = "RD2004";
+    public const string ParentNotFound = "RD2005";
+    public const string InheritanceCycle = "RD2006";
+    public const string RootNotDefs = "RD2013";
+    public const string UnknownDefType = "RD2017";
+    // RD1xxx 补充
+    public const string DuplicatePackageId = "RD1005";
 }

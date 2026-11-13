@@ -68,5 +68,56 @@ public static class CatalogCases
             }
             finally { if (Directory.Exists(tmp)) Directory.Delete(tmp, true); }
         });
+
+        T.Case("★ 目录表：3984 个候选 → 3971 个 mod、0 个重复", () =>
+        {
+            var active = ModCatalog.ReadActiveMods(env.ModsConfigPath);
+            T.Eq(active.Length, Facts.ActiveModCount, "activeMods 条数（★ 不能把 knownExpansions 混进来）");
+
+            var result = ModCatalog.Build(env, env.TargetVersion, active);
+            var cat = result.Catalog;
+
+            T.Eq(cat.All.Count, Facts.ModsWithPackageId, "解析出 packageId 的 mod 数");
+            T.Eq(result.Diagnostics.Count(d => d.Code == "RD1005"), Facts.RealDuplicatePackageIdCount,
+                "真实 packageId 重复数");
+
+            var candidates = ModCatalog.EnumerateCandidates(env).Count();
+            T.Eq(candidates, Facts.CandidateModDirCount, "候选目录总数");
+        });
+
+        T.Case("启用 mod 全部定位到目录，且互相不重叠", () =>
+        {
+            var active = ModCatalog.ReadActiveMods(env.ModsConfigPath);
+            var cat = ModCatalog.Build(env, env.TargetVersion, active).Catalog;
+
+            T.Eq(cat.Active.Count, Facts.ActiveModCount, "Active 集合大小");
+            var missing = active.Where(p => !cat.TryGet(p, out _)).ToArray();
+            T.True(missing.Length == 0, "未定位到的启用 mod: " + string.Join(", ", missing));
+            T.True(cat.Active.All(m => m.IsActive), "Active 集合里 IsActive 都应为 true");
+        });
+
+        T.Case("来源分类正确（本地/官方/工坊）", () =>
+        {
+            var cat = ModCatalog.Build(env, env.TargetVersion,
+                ModCatalog.ReadActiveMods(env.ModsConfigPath)).Catalog;
+
+            T.True(cat.Get("dsh.threatfleet.fragments")?.Source == ModSource.Local, "ThreatFleet 是本地");
+            T.True(cat.Get("Ludeon.RimWorld")?.Source == ModSource.Official, "Core 是官方");
+            T.True(cat.Get("brrainz.visualexceptions")?.Source == ModSource.Workshop, "VisualExceptions 是工坊");
+            T.True(cat.Get("brrainz.visualexceptions")?.PublishedFileId == "2538411704", "工坊目录名即 publishedFileId");
+        });
+
+        T.Case("_rimdev 不会进目录表（它就在 Mods 下但没有 About.xml）", () =>
+        {
+            var cat = ModCatalog.Build(env, env.TargetVersion, Array.Empty<string>()).Catalog;
+            T.True(cat.All.All(m => !m.RootPath.Contains("_rimdev", StringComparison.OrdinalIgnoreCase)),
+                "目录表里不应出现 _rimdev");
+        });
+
+        T.Case("扫描性能：目录表构建应远低于 10 秒", () =>
+        {
+            var r = ModCatalog.Build(env, env.TargetVersion, Array.Empty<string>());
+            T.True(r.ElapsedMs < 10_000, $"实测 {r.ElapsedMs} ms（基线 1375 ms）");
+        });
     }
 }

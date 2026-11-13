@@ -21,6 +21,13 @@ public sealed class ManagedAssemblyLoadException : Exception
 public sealed class ManagedAssemblyCatalog
 {
     private readonly Dictionary<string, List<Type>> _bySimpleName = new(StringComparer.Ordinal);
+
+    // ★ 第 3 期 Task 2b：全名精确表。`Find()` 的「取最后一段当简单名」兜底对
+    //   `VEF.Abilities.AbilityDef` 这类【带命名空间的元素名】是灾难：它兜底命中 RimWorld.AbilityDef，
+    //   于是拿 VEF 自定义类型里写的字段去查原版类型的字段表 → 全库 17623 条 RD4001 假阳。
+    //   含 '.' 的名字必须只认全名精确匹配（见 FindExactFullName 与 FieldNameCheck 的机制 B）。
+    private readonly Dictionary<string, Type> _byFullName = new(StringComparer.Ordinal);
+
     private readonly Dictionary<string, MemberInfoIndex> _memberCache = new(StringComparer.Ordinal);
     private readonly Type[] _types;
 
@@ -41,6 +48,11 @@ public sealed class ManagedAssemblyCatalog
             if (!_bySimpleName.TryGetValue(name, out var list))
                 _bySimpleName[name] = list = new List<Type>();
             list.Add(t);
+
+            // ★ 第 3 期 Task 2b：另建一张【全名】精确表（重名/嵌套情形由 TryAdd 取先到者，
+            //   与 _bySimpleName 的「取第一个」语义一致）。
+            if (t.FullName is { } full)
+                _byFullName.TryAdd(full, t);
         }
     }
 
@@ -113,7 +125,15 @@ public sealed class ManagedAssemblyCatalog
     public IReadOnlyList<Type> FindAllBySimpleName(string simpleName) =>
         _bySimpleName.TryGetValue(simpleName, out var list) ? list : Array.Empty<Type>();
 
-    /// <summary>支持 "Verse.ThingDef" 全名与 "ThingDef" 简单名两种写法。</summary>
+    /// <summary>
+    /// 支持 "Verse.ThingDef" 全名与 "ThingDef" 简单名两种写法。
+    ///
+    /// ★★ 第 3 期 Task 2b 的警告：本方法对**含 `.` 的名字**会退化成简单名兜底
+    ///   （`VEF.Abilities.AbilityDef` → 取末段 `AbilityDef` → 命中 `RimWorld.AbilityDef`）。
+    ///   那条退化路径对「元素名/Class= 就是完整类型名」的场景是错的（实测 17623 条假阳）。
+    ///   **XML 元素名/Class= 的解析请用 <see cref="ResolveXmlTypeName"/>，不要直接调本方法。**
+    ///   本方法保留给 api/name 等「按名字查类型」的交互场景（那里兜底是好用的）。
+    /// </summary>
     public Type? Find(string typeName)
     {
         var simple = typeName.Contains('.') ? typeName[(typeName.LastIndexOf('.') + 1)..] : typeName;
@@ -125,6 +145,24 @@ public sealed class ManagedAssemblyCatalog
         }
         return null;
     }
+
+    /// <summary>全名精确查找（<b>无任何兜底</b>）。用于含 `.` 的类型名（元素名或 Class=）。</summary>
+    public Type? FindExactFullName(string fullName) =>
+        _byFullName.TryGetValue(fullName, out var t) ? t : null;
+
+    /// <summary>
+    /// ★★ 第 3 期 Task 2b 的**唯一**入口：解析 XML 里的类型名（def 元素名 或 Class= 属性）。
+    ///
+    /// 规则（机制 B）：
+    /// <list type="bullet">
+    /// <item>名字含 `.`（看起来是完整类型名 / 带命名空间）→ <b>只认全名精确匹配</b>，
+    ///   解析不到就返回 null（调用方报 RD2017 info），<b>绝不</b>退化到简单名。</item>
+    /// <item>名字不含 `.`（`ThingDef` / `HediffDef` 这类原版元素名）→ 走 <see cref="Find"/> 的既有逻辑。
+    ///   这条路径必须保留：它是抓真缺陷（如 <c>ThingDef</c> 上写 <c>renderNodeProperties</c>）的能力所在。</item>
+    /// </list>
+    /// </summary>
+    public Type? ResolveXmlTypeName(string typeName) =>
+        typeName.Contains('.') ? FindExactFullName(typeName) : Find(typeName);
 
     public MemberInfoIndex MembersOf(Type type) =>
         _memberCache.TryGetValue(type.FullName ?? type.Name, out var idx)

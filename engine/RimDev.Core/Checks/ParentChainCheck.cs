@@ -92,6 +92,10 @@ public sealed class ParentChainCheck : ICheck
 
     public IEnumerable<Diagnostic> Run(CheckContext ctx)
     {
+        // ★ 第 3 期 Task 2b：名字池惰性建【一次】（旧实现每条诊断重建一次）。
+        //   注意必须在这里声明：Run 是迭代器，局部变量在两次 MoveNext 之间保持。
+        NameSuggestionPool? suggestionPool = null;
+
         foreach (var d in ctx.Defs)
         {
             // ★ 报告过滤器（修正 ④）：只报目标 mod 自己的 def。
@@ -104,7 +108,7 @@ public sealed class ParentChainCheck : ICheck
             var parentExists = ctx.Index.CanBeReferenced(d.ParentName!);
             if (!parentExists)
             {
-                var suggestions = SuggestParent(ctx, d.ParentName);
+                var suggestions = SuggestParent(ctx, d.ParentName!, ref suggestionPool);
                 yield return new Diagnostic(
                     Codes.ParentNotFound, Severity.Error, Scope.Offline,
                     $"ParentName=\"{d.ParentName}\" 指向不存在的 def/抽象基类",
@@ -178,15 +182,19 @@ public sealed class ParentChainCheck : ICheck
         : !string.IsNullOrEmpty(d.DefName) ? d.DefName
         : Path.GetFileName(d.FileAbs) + ":" + d.Line;
 
-    private static List<string> SuggestParent(CheckContext ctx, string parentName)
+    /// <summary>
+    /// ParentName 未解析时给相近名（第 3 期 Task 2b：**提速 482 s → 秒级**，输出逐条不变）。
+    ///
+    /// ★ 旧实现（已删）每报一条就重建一次名字池并对**每个**名字调
+    ///   <see cref="RimDev.Core.Metadata.MemberInfoIndex.Similarity"/>（全库 436 × 32 万 ≈ 1.4 亿次，
+    ///   每次都 ToLowerInvariant + 两个 int[] 分配，实测 482 s = 全库 615 s 的 78%）。
+    ///   现在改成：<see cref="NameSuggestionPool"/> 惰性建一次池（并预计算小写）+ 逐名字 memo +
+    ///   长度窗/首字符捷径/带状 Levenshtein 截断 —— 预筛只剪「必然 score ≤ 0」的候选，
+    ///   排序与 tie-break 保持原样，所以**同样的诊断、同样的条数、同样的内容**。
+    /// </summary>
+    private static List<string> SuggestParent(CheckContext ctx, string parentName, ref NameSuggestionPool? pool)
     {
-        var pool = ctx.Index.ByDefName.Keys.Concat(ctx.Index.ByAbstractName.Keys).Distinct();
-        return pool
-            .Select(n => (n, s: RimDev.Core.Metadata.MemberInfoIndex.Similarity(parentName, n)))
-            .Where(x => x.s > 0)
-            .OrderByDescending(x => x.s)
-            .Take(5)
-            .Select(x => x.n)
-            .ToList();
+        pool ??= NameSuggestionPool.FromIndex(ctx.Index);
+        return pool.Suggest(parentName, 5);
     }
 }

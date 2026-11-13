@@ -24,9 +24,12 @@ public sealed class DefIndexStore
     /// ★ 为什么要有这个常量：消费方若只判 <see cref="Exists"/> 就直接 <see cref="LoadDefs"/>，
     ///   一旦索引格式升级（字段增删/短键改名），旧缓存会被【静默当成新格式】读出来 —— 又是一类
     ///   「不报错、只是答案错」。`01` §7 早已定义 RD1004 = 索引缓存损坏或 schema 版本不匹配 →
-    ///   报它并当作没有索引（去跑 --rebuild），而不是继续用它作答。
+    ///
+    /// ★ 版本历史：2 = 计数自洽三元组（第 3 期 Task 2）；**3 = def 头新增 ClassAttr（第 3 期 Task 2b）**——
+    ///   schema 2 的缓存里没有 Class= 属性，读出来会让 `&lt;Def Class="Rimatomics..."&gt;` 退回按元素名校验（假阳），
+    ///   所以必须升级版本号把旧缓存拒掉，而不是靠「缺字段就当 null」默默接受。
     /// </summary>
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
 
     /// <summary>
     /// 缓存目录的【单一真源】。
@@ -89,7 +92,9 @@ public sealed class DefIndexStore
                     mod = d.ModPackageId,
                     f = d.FileAbs,
                     r = d.FileRelToMod,
-                    l = d.Line
+                    l = d.Line,
+                    // ★ schema 3：Class= 属性（def 元素的类型指定）。旧版缓存无此键 → 靠 schema 版本号拒掉。
+                    c = d.ClassAttr
                 }, Json));
             }
         }
@@ -142,7 +147,10 @@ public sealed class DefIndexStore
                 ModPackageId: r.GetProperty("mod").GetString() ?? "",
                 FileAbs: r.GetProperty("f").GetString() ?? "",
                 FileRelToMod: r.GetProperty("r").GetString() ?? "",
-                Line: r.GetProperty("l").GetInt32()));
+                Line: r.GetProperty("l").GetInt32(),
+                // ★ schema 3：Class= 可选（旧缓存没有这个键，但旧缓存会被 schemaVersion 拒掉；
+                //   这里用 TryGetProperty 只是不让读环路径自杀）。
+                ClassAttr: r.TryGetProperty("c", out var cEl) ? cEl.GetString() : null));
         }
         return list;
     }

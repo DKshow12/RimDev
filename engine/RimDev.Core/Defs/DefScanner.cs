@@ -131,6 +131,10 @@ public static class DefScanner
                         var nameAttr = reader.GetAttribute("Name");
                         var parentName = reader.GetAttribute("ParentName");
                         var mayRequire = reader.GetAttribute("MayRequire");
+                        // ★ 第 3 期 Task 2b：def 元素上的 Class= 属性 —— RimWorld 是按它实例化的，
+                        //   字段规则必须优先用它（照元素名查会造出成万条假阳，实测 RD4001 里
+                        //   Def|PointCost 1467 / ThingDef|ammoClass 2439 都属这一类）。
+                        var classAttr = reader.GetAttribute("Class");
                         pendingAbstract = string.Equals(reader.GetAttribute("Abstract"), "True",
                             StringComparison.OrdinalIgnoreCase);
                         pendingDefName = null;
@@ -144,7 +148,8 @@ public static class DefScanner
                             ModPackageId: modPackageId,
                             FileAbs: fileAbs,
                             FileRelToMod: rel,
-                            Line: line);
+                            Line: line,
+                            ClassAttr: string.IsNullOrWhiteSpace(classAttr) ? null : classAttr);
 
                         if (reader.IsEmptyElement) Emit();    // 空 def 节点：只有属性
                         continue;

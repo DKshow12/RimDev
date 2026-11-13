@@ -131,7 +131,15 @@ public static class Phase3Task2Cases
                 T.Contains(b.Reason, "parsedOk + skippedUnchanged + parseFailed", "理由必须点明是哪一式");
 
                 // (c) schemaVersion 升级后旧缓存必须被拒绝（不能静默当新格式读）
-                File.WriteAllText(store.MetaPath, good.Replace("\"schemaVersion\": 2", "\"schemaVersion\": 1"));
+                // ★ Task 2b：这里改成从常量拼出「旧版本号」，不要再写死字面量 ——
+                //   上一版写死 2，schema 升到 3 后 Replace 静默失配（测试会以此用例失败的形式暴露，
+                //   但那已经浪费了一轮排查；用常量拼字符串就没有这个隐患）。
+                var stale = good.Replace(
+                    $"\"schemaVersion\": {DefIndexStore.CurrentSchemaVersion}",
+                    $"\"schemaVersion\": {DefIndexStore.CurrentSchemaVersion - 1}");
+                T.True(!string.Equals(stale, good, StringComparison.Ordinal),
+                    "替换必须真的命中（否则这条用例是在测一个没坏的文件）");
+                File.WriteAllText(store.MetaPath, stale);
                 var c = store.ValidateCache(files.Count);
                 T.False(c.Usable, "schemaVersion 不匹配必须拒绝");
                 T.Contains(c.Reason, "schemaVersion", "理由必须点明 schema");

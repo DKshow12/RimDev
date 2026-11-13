@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Reflection;
 using System.Xml;
 using RimDev.Core.Checks;
@@ -50,6 +51,9 @@ public sealed class SimulatedDefSet
     private readonly Dictionary<string, Dictionary<int, List<string>>> _byTypeLen = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _countByTypeAndName = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<string>> _typesByName = new(StringComparer.Ordinal);
+    /// <summary>★ Task 8 Step 2：运行期生成的 `(类型\0名字)` 对 + 名字集合（用于「生成名命中数」的独立计数）。</summary>
+    private readonly HashSet<string> _generatedPairs = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _generatedNames = new(StringComparer.Ordinal);
 
     /// <summary>
     /// ★ 第 3 期 Task 6b：引擎**运行期生成 def** 的模型（12 个 `DefGenerator` 入口）。
@@ -85,6 +89,11 @@ public sealed class SimulatedDefSet
     /// </summary>
     public int GeneratedDefNames { get; private init; }
 
+    /// <summary>★ Task 8 Step 1：`Build` 的三段耗时（只由 `sim --timings` 打印，不进 --json）。</summary>
+    public long BuildDeclLoopMs { get; private init; }
+    public long BuildGeneratorModelMs { get; private init; }
+    public long BuildPostLoopMs { get; private init; }
+
     /// <summary>某个 `(DefType, defName)` 是否存在于有效集合里。</summary>
     public bool Contains(string defType, string defName) =>
         _byType.TryGetValue(defType, out var names) && ContainsName(names, defName);
@@ -98,6 +107,19 @@ public sealed class SimulatedDefSet
     {
         foreach (var t in candidateTypes)
             if (Contains(t, defName)) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// ★ Task 8 Step 2：这条引用是不是**靠「引擎运行期生成 def」才命中的**。
+    /// 必须能单独计数：生成名不是 XML 声明，若优化时把它「顺手漏掉」，RD3001 会凭空变多，
+    /// 而总量类计数（悬空数）只有在它恰好被别的名字抵消时才会看起来正常 —— 单看一个数不够。
+    /// </summary>
+    public bool AnyGeneratedHit(IReadOnlyList<string> candidateTypes, string defName)
+    {
+        if (!_generatedNames.Contains(defName)) return false;
+        foreach (var t in candidateTypes)
+            if (_generatedPairs.Contains(t + "\u0000" + defName)) return true;
         return false;
     }
 
@@ -164,6 +186,213 @@ public sealed class SimulatedDefSet
             .ToList();
     }
 
+    // ════════════════════════════════════════════════════════════════════════════════
+    // ★ 第 3 期 Task 8：`Suggest` 的**精确等价加速路径**
+    // ════════════════════════════════════════════════════════════════════════════════
+    // 旧路径（上面的 `Suggest`）实测成本：全库 3532 条悬空引用、平均 **195.9 ms/条**
+    //（`sim --all` 的 691.8 s 候选判定里几乎全部来自这里）。它按 bound 序列 4 → 12 → 28…
+    // **整窗重扫**，且 bound 变大后 `LevenshteinBounded` 的早退条件（行最小 > bound）几乎不触发
+    // ⇒ 同一个名字被算 2~3 次全表 DP，每次还分配两个 int[]。
+    //
+    // 本路径结果**逐项相同**，只扫一遍：
+    //   ① 候选池按「目标类型」合并去重一次并跨调用复用（顺带消掉每次调用的 HashSet `seen`）；
+    //   ② 按 |lenDiff| **升序**扫描，运行期 cutoff = 当前第 max 名的距离；
+    //      一旦 `|lenDiff| > cutoff`，剩余候选满足 `dist ≥ |lenDiff| > cutoff`，不可能进前 max ⇒ 停；
+    //   ③ 编辑距离走线程静态缓冲（热路径零分配）。
+    //
+    // 等价性推导（为什么「一遍扫 + 全局前 max + D 过滤」≡ 旧实现的输出）：
+    //   · 旧实现第 k 轮的命中集 = { n : dist(n) ≤ b_k }（长度窗 [L-b_k, L+b_k] 恰好包含全体
+    //     dist ≤ b_k 的名字，因为 dist ≥ |lenDiff|）；命中数对 b_k 单调不减。
+    //   · 它停在序列 {4,12,28,…} 里第一个满足「命中 ≥ max」或「b_k ≥ upper」的 b_k（记作 D）；
+    //     输出 = {dist ≤ D} 按 (dist, name) 升序取前 max。
+    //     而「命中 ≥ max」⟺「第 max 小的距离 d_max ≤ b_k」⟹ D = 序列里第一个 ≥ min(d_max, upper) 的值。
+    //   · 因此输出 =「全局 (dist, name) 升序前 max 名」再按 `dist ≤ D` 过滤 —— 就是本实现的做法。
+    //     ★ 过滤不能省：d_max > upper 时 D 可能 < d_max，旧实现会**返回不足 max 个**，必须同样少返回。
+
+    /// <summary>候选池：按长度分桶、已去重；桶内按名字 Ordinal 升序（结果与桶内顺序无关，排序只为可复现）。</summary>
+    private sealed class SuggestPool
+    {
+        internal SuggestPool(Dictionary<int, string[]> byLen, int minLen, int maxLen)
+        {
+            ByLen = byLen;
+            MinLen = minLen;
+            MaxLen = maxLen;
+        }
+
+        internal Dictionary<int, string[]> ByLen { get; }
+        internal int MinLen { get; }
+
+        internal int MaxLen { get; }
+        /// <summary>同一 (目标类型, 值) 的候选结果（同一悬空名常被多处引用；实测 3532 条里 2343 个 distinct）。</summary>
+        internal ConcurrentDictionary<string, IReadOnlyList<string>> Cache { get; } = new(StringComparer.Ordinal);
+    }
+
+    private readonly ConcurrentDictionary<Type, SuggestPool> _suggestPools = new();
+    private readonly object _poolBuildLock = new();
+
+    /// <summary>
+    /// 建议候选（加速路径）。语义与 <see cref="Suggest"/> **逐项相同**（推导见上方注释），
+    /// 调用方额外给一个「目标类型」作为池与缓存的键。
+    /// </summary>
+    public IReadOnlyList<string> SuggestFor(Type targetType, IReadOnlyList<string> candidateTypes,
+        string defName, int max = 5)
+    {
+        var pool = PoolFor(targetType, candidateTypes);
+        if (pool.Cache.TryGetValue(defName, out var cached)) return cached;
+        var res = ComputeSuggest(pool, defName, max);
+        pool.Cache[defName] = res;
+        return res;
+    }
+
+    private SuggestPool PoolFor(Type targetType, IReadOnlyList<string> candidateTypes)
+    {
+        if (_suggestPools.TryGetValue(targetType, out var hit)) return hit;
+        lock (_poolBuildLock)
+        {
+            if (_suggestPools.TryGetValue(targetType, out hit)) return hit;
+            var merged = new Dictionary<int, HashSet<string>>();
+            foreach (var t in candidateTypes)
+            {
+                if (!_byType.TryGetValue(t, out var names)) continue;
+                foreach (var n in names)
+                {
+                    if (!merged.TryGetValue(n.Length, out var set))
+                        merged[n.Length] = set = new HashSet<string>(StringComparer.Ordinal);
+                    set.Add(n);
+                }
+            }
+            var byLen = new Dictionary<int, string[]>(merged.Count);
+            var minLen = int.MaxValue;
+            var maxLen = 0;
+            foreach (var (bucketLen, set) in merged)
+            {
+                var arr = set.ToArray();
+                Array.Sort(arr, StringComparer.Ordinal);
+                byLen[bucketLen] = arr;
+                if (bucketLen < minLen) minLen = bucketLen;
+                if (bucketLen > maxLen) maxLen = bucketLen;
+            }
+            if (minLen == int.MaxValue) minLen = 0;
+            hit = new SuggestPool(byLen, minLen, maxLen);
+            _suggestPools[targetType] = hit;
+            return hit;
+        }
+    }
+
+    private static IReadOnlyList<string> ComputeSuggest(SuggestPool pool, string defName, int max)
+    {
+        if (max <= 0 || pool.ByLen.Count == 0) return Array.Empty<string>();
+
+        var len = defName.Length;
+        var upper = Math.Max(len, 1) + 1;
+        var best = new List<(int Distance, string Name)>(max + 1);
+
+        // ★ 单遍扫描（一遍 = 旧实现全部 bound 轮的并集，且**不重扫**）：
+        //   ① 按 |lenDiff| 升序扫 —— 最像的候选先被看到，cutoff（当前第 max 名的距离）迅速收紧；
+        //   ② 桶内用 `bound = min(dMax, cutoff)` 调 `LevenshteinBounded`：早退（行最小 > bound）
+        //      让绝大多数候选只算几行；
+        //   ③ 只扫到 |lenDiff| ≤ dMax 即可 —— 旧实现的 D 必 ≤ 第一个 ≥ upper 的 bound 值（= dMax），
+        //      而 dist ≥ |lenDiff|，所以 {dist ≤ D} 全落在该窗口内（实测这一步把整池重扫从 3 遍缩成 1 遍）。
+        var dMax = 4;
+        while (dMax < upper && dMax < int.MaxValue / 2) dMax = dMax * 2 + 4;
+
+        for (var lenDiff = 0; lenDiff <= dMax; lenDiff++)
+        {
+            if (best.Count >= max && lenDiff > best[max - 1].Distance) break;   // 精确提前终止
+            var bound = best.Count >= max ? best[max - 1].Distance : dMax;
+            ScanBucket(pool, len - lenDiff, defName, bound, best, max);
+            if (lenDiff != 0) ScanBucket(pool, len + lenDiff, defName, bound, best, max);
+            if (len - lenDiff < pool.MinLen && len + lenDiff > pool.MaxLen) break;
+        }
+
+        // ★ 旧实现的 D 过滤（必须保留，否则少数条目会多返回）：
+        //   D = 序列 {4,12,28,…} 里第一个 ≥ min(d_max, upper) 的值（d_max = 第 max 小的距离；
+        //   不足 max 个时视作 +∞ ⇒ D = dMax）。输出 = {dist ≤ D} 里最近的 max 个。
+        //   只有 d_max > upper 时 D < d_max —— 此时旧实现**故意少返回**，这里同样按 D 截尾。
+        if (best.Count > 0)
+        {
+            var dTarget = best.Count >= max ? Math.Min(best[max - 1].Distance, upper) : upper;
+            var dOld = 4;
+            while (dOld < dTarget && dOld < int.MaxValue / 2) dOld = dOld * 2 + 4;
+            while (best.Count > 0 && best[best.Count - 1].Distance > dOld) best.RemoveAt(best.Count - 1);
+        }
+
+        var res = new List<string>(best.Count);
+        foreach (var (_, n) in best) res.Add(n);
+        return res;
+    }
+
+    private static void ScanBucket(SuggestPool pool, int bucketLen, string defName, int bound,
+        List<(int Distance, string Name)> best, int max)
+    {
+        if (bucketLen < 0 || !pool.ByLen.TryGetValue(bucketLen, out var names)) return;
+        foreach (var n in names)
+        {
+            var d = LevenshteinBoundedPooled(defName, n, bound);
+            if (d > bound) continue;                      // bound+1 = 「超过上界」，丢弃
+            var item = (d, n);
+            var i = best.Count;
+            while (i > 0 && CompareCandidate(best[i - 1], item) > 0) i--;
+            if (i >= max) continue;                       // 比当前第 max 名还差
+            best.Insert(i, item);
+            if (best.Count > max) best.RemoveAt(best.Count - 1);
+        }
+    }
+
+    /// <summary>与旧实现完全相同的排序口径：先距离、**同分按名字 Ordinal 升序**（`--json` 字节稳定的前提）。</summary>
+    private static int CompareCandidate((int Distance, string Name) a, (int Distance, string Name) b)
+    {
+        var c = a.Distance.CompareTo(b.Distance);
+        return c != 0 ? c : string.CompareOrdinal(a.Name, b.Name);
+    }
+
+    [ThreadStatic] private static int[]? _levPrev;
+    [ThreadStatic] private static int[]? _levCur;
+
+    /// <summary>
+    /// 与公开的 <see cref="LevenshteinBounded"/> **逐位相同**，只是复用线程静态缓冲。
+    /// 热路径上每次调用省掉两个 `int[]` 分配（实测候选判定 681,581 次调用里绝大多数是这个函数）。
+    /// </summary>
+    private static int LevenshteinBoundedPooled(string a, string b, int bound)
+    {
+        if (Math.Abs(a.Length - b.Length) > bound) return bound + 1;
+        if (a.Length == 0) return b.Length;
+        if (b.Length == 0) return a.Length;
+
+        var need = b.Length + 1;
+        var prev = _levPrev;
+        var cur = _levCur;
+        if (prev is null || prev.Length < need)
+        {
+            prev = _levPrev = new int[need];
+            cur = _levCur = new int[need];
+        }
+        else if (cur is null || cur.Length < need)
+        {
+            cur = _levCur = new int[need];
+        }
+        var curArr = cur!;
+
+        for (var j = 0; j <= b.Length; j++) prev[j] = j;
+
+        for (var i = 1; i <= a.Length; i++)
+        {
+            curArr[0] = i;
+            var rowMin = curArr[0];
+            for (var j = 1; j <= b.Length; j++)
+            {
+                var cost = a[i - 1] == b[j - 1] ? 0 : 1;
+                curArr[j] = Math.Min(Math.Min(curArr[j - 1] + 1, prev[j] + 1), prev[j - 1] + cost);
+                if (curArr[j] < rowMin) rowMin = curArr[j];
+            }
+            if (rowMin > bound) return bound + 1;
+            (_levPrev, _levCur) = (curArr, prev);
+            prev = _levPrev!;
+            curArr = _levCur!;
+        }
+        return prev[b.Length];
+    }
+
     private static bool ContainsName(List<string> names, string defName)
     {
         // 池子通常很小（几十~几百），但 ThingDef 可达几万 ⇒ 排序后二分。
@@ -220,6 +449,10 @@ public sealed class SimulatedDefSet
         int declarations = 0, abstractCount = 0, skipped = 0, effective = 0;
         int inherited = 0, unnamed = 0, unresolvedType = 0;
 
+        // ★ Task 8 Step 1：Build 的三段耗时（声明循环 / 生成器建模 / 收尾排序）。
+        //   必须有分段：`SimulatedDefSet.Build` 一次性涵盖了「遍历 31 万个声明」
+        //   「重跑一遍全部 XML 收事实」「给每个名字建分桶」三件性质完全不同的事。
+        var swDecl = System.Diagnostics.Stopwatch.StartNew();
         foreach (var d in ctx.Defs)
         {
             declarations++;
@@ -263,6 +496,7 @@ public sealed class SimulatedDefSet
             var countKey = key + "\u0000" + defName;
             counts[countKey] = counts.GetValueOrDefault(countKey) + 1;
         }
+        swDecl.Stop();
 
         // ★ 声明口径的 distinct 计数必须在并生成名**之前**取（生成名不是声明）。
         var declaredDistinct = byType.Values.Sum(x => x.Count);
@@ -272,6 +506,9 @@ public sealed class SimulatedDefSet
         //   ★ 必须在 byType 上直接并（而不是事后加）——否则排序与长度分桶会与生成名不一致。
         //   ★ 生成名**不**进 counts（它们不是声明，DeclarationCount 应只数 XML 声明）。
         DefGeneratorModel? genModel = null;
+        var genPairsLocal = new HashSet<string>(StringComparer.Ordinal);
+        var genNamesLocal = new HashSet<string>(StringComparer.Ordinal);
+        var swGen = System.Diagnostics.Stopwatch.StartNew();
         if (modelGenerators)
         {
             genModel = DefGeneratorModel.Build(catalog, ctx, analysis, byType);
@@ -289,10 +526,14 @@ public sealed class SimulatedDefSet
                     byTypeLen[gt] = new Dictionary<int, List<string>>();
                 }
                 if (seenNames[gt].Add(gn)) glist.Add(gn);
+                genPairsLocal.Add(gt + "\u0000" + gn);
+                genNamesLocal.Add(gn);
             }
         }
+        swGen.Stop();
 
         // 排序（二分查找 + 建议列表的稳定序）
+        var swPost = System.Diagnostics.Stopwatch.StartNew();
         foreach (var (type, list) in byType)
         {
             list.Sort(StringComparer.Ordinal);
@@ -304,6 +545,7 @@ public sealed class SimulatedDefSet
                 bucket.Add(n);
             }
         }
+        swPost.Stop();
 
         var set = new SimulatedDefSet
         {
@@ -314,12 +556,17 @@ public sealed class SimulatedDefSet
             EffectiveDefNames = declaredDistinct,
             ShadowedDeclarations = effective - declaredDistinct,
             GeneratedDefNames = genModel?.Names.Count ?? 0,
+            BuildDeclLoopMs = swDecl.ElapsedMilliseconds,
+            BuildGeneratorModelMs = swGen.ElapsedMilliseconds,
+            BuildPostLoopMs = swPost.ElapsedMilliseconds,
             InheritedDefNameDeclarations = inherited,
             UnnamedDeclarations = unnamed,
             UnresolvedTypeDeclarations = unresolvedType,
             ClassAttrDeclarations = ctx.Defs.Count(x => x.ClassAttr is not null),
         };
         set.GeneratorModel = genModel;
+        foreach (var p in genPairsLocal) set._generatedPairs.Add(p);
+        foreach (var n in genNamesLocal) set._generatedNames.Add(n);
         foreach (var (k, v) in byType) set._byType[k] = v;
         foreach (var (type, names) in byType)
             foreach (var n in names)
@@ -406,6 +653,12 @@ public sealed class DefGeneratorModel
     public IReadOnlyList<string> UnmodeledGenerators { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> DiscoveredGenerators { get; init; } = Array.Empty<string>();
     public int EvidenceFailures { get; init; }
+
+    /// <summary>
+    /// ★ Task 8 Step 1：其中的「事实表扫描」耗时（`DefGenFactScanner.Scan`）——
+    /// 它要**把全部 XML 再读一遍**，与 `ElapsedMs` 的差就是 15 条生成规则的求值时间。
+    /// </summary>
+    public long FactScanElapsedMs { get; init; }
     public long ElapsedMs { get; init; }
 
     // ── 规则表（每条的 `Evidence` 都必须在 IL 里找到，见类注释）────────────────────
@@ -475,7 +728,10 @@ public sealed class DefGeneratorModel
         var discovered = DiscoverGenerators(catalog);
 
         // ② 事实表（XML 一级/二级子元素与少量标量）—— 谓词需要它。
+        //   ★ Task 8 Step 1：单独计时 —— 这一步会**把本次扫描集合的每个 XML 再读一遍**。
+        var swFacts = System.Diagnostics.Stopwatch.StartNew();
         var facts = DefGenFactScanner.Scan(ctx, catalog, analysis);
+        swFacts.Stop();
 
         // ③ 逐条规则：先验 IL 证据，再算名字。
         foreach (var rule in Table)
@@ -545,6 +801,7 @@ public sealed class DefGeneratorModel
             UnmodeledGenerators = unmodeled,
             DiscoveredGenerators = discovered,
             EvidenceFailures = failures,
+            FactScanElapsedMs = swFacts.ElapsedMilliseconds,
             ElapsedMs = sw.ElapsedMilliseconds,
         };
     }

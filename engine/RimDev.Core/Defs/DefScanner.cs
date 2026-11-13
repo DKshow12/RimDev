@@ -38,16 +38,42 @@ public sealed record ScanResult(
 /// </summary>
 public static class DefScanner
 {
-    public static ScanResult Scan(IEnumerable<(string FileAbs, string ModPackageId, string ModRoot)> files)
+    /// <summary>★ Task 8 Step 3：最近一次 `Scan` 实际跑起来的线程数（诊断：并行是否真的发生）。</summary>
+    public static int LastThreadsUsed { get; private set; }
+
+    public static ScanResult Scan(IEnumerable<(string FileAbs, string ModPackageId, string ModRoot)> files,
+        int parallelism = 0)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
+        var list = files as IList<(string FileAbs, string ModPackageId, string ModRoot)> ?? files.ToList();
+        if (list.Count == 0)
+        {
+            sw.Stop();
+            return new ScanResult(Array.Empty<RawDef>(), Array.Empty<DefFileResult>(), 0, 0, sw.ElapsedMilliseconds);
+        }
+
+        // ★ Task 8 Step 3：文件之间互相独立（ScanFile 只用局部量、无静态状态）⇒ 按文件并行。
+        //   合并时**按文件原顺序**回放 —— def 序列、失败计数都与串行逐条一致。
+        var dop = ParallelWork.Degree(parallelism, list.Count);
+
+        var parts = new DefFileResult[list.Count];
+        // 下发顺序按文件字节数降序（LPT）——重活先跑，尾延迟 ≈ 总工作量 / 并行度。
+        var order = ParallelWork.LongestFirst(list, f => f.FileAbs);
+        ParallelWork.Run(order.Length, dop, k =>
+        {
+            var i = order[k];
+            parts[i] = ScanFile(list[i].FileAbs, list[i].ModPackageId, list[i].ModRoot);
+        });
+        LastThreadsUsed = ParallelWork.LastThreadsUsed;
+
         var allDefs = new List<RawDef>();
-        var results = new List<DefFileResult>();
+        var results = new List<DefFileResult>(list.Count);
         int failed = 0;
 
-        foreach (var (fileAbs, pkgId, modRoot) in files)
+        for (var i = 0; i < parts.Length; i++)
         {
-            var r = ScanFile(fileAbs, pkgId, modRoot);
+            var r = parts[i];
+            if (r is null) continue;
             results.Add(r);
             if (r.ParseError is not null) failed++;
             allDefs.AddRange(r.Defs);

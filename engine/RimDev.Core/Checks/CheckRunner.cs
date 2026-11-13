@@ -15,6 +15,10 @@ public sealed class CheckRunner
     /// </summary>
     public IReadOnlyList<ICheck> Checks => _checks;
 
+    /// <summary>★ Task 8 Step 1：上一次 <see cref="Run"/> 里**每条规则**的墙钟（ms，按注册顺序）。
+    ///   「引用解析之外的时间」必须也能归因到具体规则 —— 只报一个总数等于没有结论。</summary>
+    public IReadOnlyList<(string Id, long Ms)> LastCheckMs { get; private set; } = Array.Empty<(string, long)>();
+
     public static CheckRunner Default()
     {
         return new CheckRunner()
@@ -44,15 +48,20 @@ public sealed class CheckRunner
     public IReadOnlyList<Diagnostic> Run(CheckContext ctx, Func<Diagnostic, bool>? filter = null)
     {
         var all = new List<Diagnostic>();
+        var timings = new List<(string Id, long Ms)>(_checks.Count);
         foreach (var c in _checks)
         {
+            var t = System.Diagnostics.Stopwatch.StartNew();
             try { all.AddRange(c.Run(ctx)); }
             catch (Exception ex)
             {
                 all.Add(new Diagnostic("RD9999", Severity.Error, Scope.Offline,
                     $"规则 {c.Id} 自身抛异常：{ex.GetType().Name}: {ex.Message}"));
             }
+            t.Stop();
+            timings.Add((c.Id, t.ElapsedMilliseconds));
         }
+        LastCheckMs = timings;
         if (filter is not null) all = all.Where(filter).ToList();
 
         // ★ 按稳定指纹去重：同一处问题只报一条，附出现次数

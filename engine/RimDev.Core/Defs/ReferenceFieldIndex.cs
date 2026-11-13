@@ -88,7 +88,7 @@ public sealed class ReferenceFieldIndex
     /// 这种节点代表的具体类型**不在**任何字段类型里（字段声明的是抽象/基类 CompProperties）。
     /// 不补算 ⇒ `ShapeOf` 返回 null ⇒ 派发成功但「一看字段就停」⇒ 那批引用被**静默少报**。
     /// </summary>
-    private readonly Dictionary<Type, TypeShape> _extraShapes = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Type, TypeShape> _extraShapes = new();
     private HashSet<Type>? _derived;
 
     private ReferenceFieldIndex(ManagedAssemblyCatalog catalog, Type? defType)
@@ -164,13 +164,15 @@ public sealed class ReferenceFieldIndex
     public TypeShape? ShapeOf(Type t)
     {
         if (_shapes.TryGetValue(t, out var s)) return s;
+        // ★ Task 8：引用解析已改为**按文件并行** ⇒ 这里的「惰性补形状」会被多线程同时进入。
+        //   原实现用普通 Dictionary 就地写入 —— 并发改非并发集合，实测 `check --only-official
+        //   --scope active` 直接 `InvalidOperationException` 崩掉；更坏的情况是**静默损坏**内部状态。
+        //   两条纪律：① 容器换 ConcurrentDictionary；② 允许并发重复构建（BuildShape 是纯函数，代价可忽略）。
         if (_extraShapes.TryGetValue(t, out var e)) return e;
         if (DefType is null || _derived is null) return null;
         // 边界 1：自定义 XML loader 类型，形状由 loader 代码决定 ⇒ 不看字段（返回 null，由调用方计数）。
         if (ManagedAssemblyCatalog.HasCustomXmlLoader(t)) return null;
-        var shape = BuildShape(t, int.MaxValue, DefType, _derived);
-        _extraShapes[t] = shape;
-        return shape;
+        return _extraShapes.GetOrAdd(t, key => BuildShape(key, int.MaxValue, DefType!, _derived!));
     }
 
     // ────────────────────────────────────────────────────────────────────────────

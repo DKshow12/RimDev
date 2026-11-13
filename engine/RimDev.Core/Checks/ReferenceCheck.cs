@@ -24,6 +24,8 @@ public sealed record ReferenceStats(
     int ResolvedViaFullNameKey,
     int ResolvedViaAssignableTypes,
     int MissingInScope,
+    /// <summary>★ Task 8 Step 2：靠**引擎运行期生成 def** 命中的引用点数（覆盖面锁的一项）。</summary>
+    int ResolvedByGeneratedName,
     int Reported,
     int CustomLoaderSubtreesSkipped,
     int UnknownFieldElements,
@@ -78,6 +80,47 @@ public sealed record ReferenceStats(
 /// 代价是必须自己做 parity 门禁：流式读到的 def 行序必须与 `ctx.Defs`（`DefScanner` 的产物）
 /// **逐个相等**，不一致就报 RD2001(error) 并跳过该文件 —— **能静默错的地方，就要让它响亮地失败**。
 /// </summary>
+/// <summary>
+/// ★ 第 3 期 Task 8 Step 1：引用解析的**分阶段耗时表**（只由 `sim --timings` 打印）。
+///
+/// 为什么必须有它：任务书要求「先测再改」，且 `07` §Task 8 的实测把 703.8 s 全部归到
+/// 「引用解析自身」这一个数上 —— 那**不是一个可优化的目标**，只是一个黑箱。本表把它拆开，
+/// 并给每个阶段配一个**计数**（`Elements`/`ChildFrames`/`Dispatches`/`LoaderProbes` …），
+/// 这样「耗时」与「调用次数」能互相印证：一个阶段的耗时高而次数低 ⇒ 单次成本高；
+/// 次数高 ⇒ 是热路径。缺了计数，单看耗时无法判断该缓存还是该删工作。
+///
+/// ★ 时间片一律用 <c>Stopwatch.GetTimestamp()</c> 累加（约 20 ns/次），在 1e7 量级调用上
+///   误差可忽略；**不进 `--json`** —— 见 `SimCommand` 的字节稳定性要求（任何 Stopwatch 取值
+///   两次运行必然不同）。
+///
+/// ★ 嵌套关系：`ChildFrameMs`（含）⊃ `DispatchMs`（含）⊃ `LoaderProbeMs`。
+///   报告里三者的关系是「父阶段总耗时 / 其中子阶段耗时」，不是互斥分段。
+/// </summary>
+public sealed record ReferencePhases(
+    long CatalogLoadMs,
+    long IndexBuildMs,
+    long AnalyzeMs,
+    long SetBuildMs,
+    long SetDeclLoopMs,
+    long SetGeneratorModelMs,
+    long SetPostLoopMs,
+    long GenFactScanMs,
+    long TraversalMs,
+    long ChildFrameMs,
+    long DispatchMs,
+    long BuildDiagMs,
+    long Elements,
+    long ChildFrames,
+    long Dispatches,
+    long LoaderProbes,
+    long LoaderProbeMs,
+    long ClassAttrProbes,
+    long DiagCalls)
+{
+    /// <summary>除「三个子阶段」之外的文件遍历开销（XmlReader 推进 + 文本节点 + EndElement 收口）。</summary>
+    public long TraversalRestMs => TraversalMs - BuildDiagMs;
+}
+
 public sealed class ReferenceCheck : ICheck
 {
     public string Id => Codes.DefNameNotFound;
@@ -91,40 +134,109 @@ public sealed class ReferenceCheck : ICheck
     /// <summary>本次的引用字段空间（口径自算的产物，供 `sim --json` 报出）。</summary>
     public ReferenceFieldIndex? LastIndex { get; private set; }
 
+    /// <summary>★ Task 8 Step 1：本次的分阶段耗时表（只在 `sim --timings` 打印；不进 `--json`）。</summary>
+    public ReferencePhases? LastPhases { get; private set; }
+
+    /// <summary>★ Task 8 Step 3：文件遍历的并行度。0 = 自动（= 处理器数）；1 = 强制串行（留给同一次跑里的 A/B 对照）。</summary>
+    public int Parallelism { get; set; }
+
+    /// <summary>★ Task 8 Step 3：本次遍历**实际**使用的并行度（`--timings` 报出；串行路径为 1）。</summary>
+    public int LastParallelism { get; private set; }
+
+    /// <summary>★ Task 8 Step 3：本次遍历**真的**跑起来的线程数（= 请求的并行度才说明并行生效）。</summary>
+    public int LastThreadsUsed { get; private set; }
     private sealed class Counters
     {
         public int Traversed, SkipMayRequire, UnknownType, Sites, Exact, FullName, Assignable, Missing;
         public int Reported, CustomSkipped, UnknownFields, AbstractNoClass, ClassHits, ClassMisses, ClassTypeMismatch, ParityFailures;
         /// <summary>★ Task 6b Step 3：`Abstract="True"` 等「引擎从不实例化」的声明数（其引用不求值）。</summary>
         public int AbstractSkipped;
+        // ★ Task 8 Step 1：分阶段打点用的**计数器 + 累加时间片**（只由 `sim --timings` 打印）。
+        //   计数与耗时必须成对：单看耗时无法判断「该缓存」还是「该少做」，单看次数无法知道单次多贵。
+        public long Elements, ChildFrames, Dispatches, LoaderProbes, ClassAttrProbes, DiagCalls;
+        public long ChildFrameTicks, DispatchTicks, DiagTicks, LoaderProbeTicks;
+        /// <summary>★ Task 8 Step 2：靠运行期生成名命中的引用点（覆盖面锁的一项）。</summary>
+        public int GeneratedHits;
         /// <summary>边界 1（自定义 loader）的**前若干条定位** —— 「每一项可定位到 文件:行」是 sim 的验收要求。</summary>
         public readonly List<string> CustomSamples = new();
+    }
+
+    /// <summary>★ Task 8 Step 3：单文件的产出（诊断 + 计数），供并行化后**按文件下标顺序**回放。</summary>
+    private sealed record FileOutcome(Counters Counters, List<Diagnostic> Pending);
+
+    /// <summary>★ Task 8 Step 3：把单文件计数并入总账。
+    ///   这里用**反射枚举全部数值字段**而不是逐字段手写：手写漏一个字段既不会编译报错、也不会抛异常，
+    ///   只会让并行后的覆盖计数静默小于串行 —— 那正好毁掉「before/after 逐项相等」这条门禁。
+    ///   全 int/long 字段 = 计数与累加时间片，逐项相加即可（语义上就是串行时的 ++）。</summary>
+    private static readonly System.Reflection.FieldInfo[] CounterFields = BuildCounterFields();
+
+    private static System.Reflection.FieldInfo[] BuildCounterFields()
+    {
+        var all = typeof(Counters).GetFields(System.Reflection.BindingFlags.Instance
+            | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+        var list = new List<System.Reflection.FieldInfo>();
+        foreach (var f in all)
+            if (f.FieldType == typeof(int) || f.FieldType == typeof(long)) list.Add(f);
+        return list.ToArray();
+    }
+
+    /// <summary>★ Task 8 Step 3：计数逐项相加（CustomSamples 单独按下标顺序合并，见 Run）。</summary>
+    private static void MergeCounters(Counters into, Counters from)
+    {
+        foreach (var f in CounterFields)
+        {
+            if (f.FieldType == typeof(int))
+                f.SetValue(into, (int)f.GetValue(into)! + (int)f.GetValue(from)!);
+            else
+                f.SetValue(into, (long)f.GetValue(into)! + (long)f.GetValue(from)!);
+        }
     }
 
     public IEnumerable<Diagnostic> Run(CheckContext ctx)
     {
         ManagedAssemblyCatalog? catalog = null;
+        var tCat = System.Diagnostics.Stopwatch.StartNew();
         try { catalog = ManagedAssemblyCatalog.Load(ReadManagedDir()); }
         catch { /* 元数据不可用时静默跳过（api/name 有独立命令覆盖该场景） */ }
+        tCat.Stop();
         if (catalog is null) yield break;
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
+        var tIdx = System.Diagnostics.Stopwatch.StartNew();
         var index = ReferenceFieldIndex.Build(catalog);
+        tIdx.Stop();
         if (index.DefType is null) yield break;
 
         // ★ 解析口径的唯一来源：InheritanceLayer.Analyze（Task 5a）——
         //   本规则不重新算 ParentName，也不重写合并语义。
+        var tAna = System.Diagnostics.Stopwatch.StartNew();
         var analysis = InheritanceLayer.Analyze(ctx);
+        tAna.Stop();
+        var tSet = System.Diagnostics.Stopwatch.StartNew();
         var set = SimulatedDefSet.Build(ctx, analysis, catalog);
-        var c = new Counters();
-        var assignableMemo = new Dictionary<Type, IReadOnlyList<string>>();
-        var frames = new Frame?[64];
-
-        foreach (var group in ctx.Defs.GroupBy(d => d.FileAbs, StringComparer.OrdinalIgnoreCase))
+        tSet.Stop();
+        // ★ Task 8 Step 3：文件之间**互相独立**（各自持有 frames 栈与 assignableMemo，set 只读），
+        //   所以按文件并行。可见输出由「结果按文件下标回放」保证：诊断顺序、CustomSamples 取样顺序
+        //   都与串行逐条一致 —— 并行只改「谁在什么时候算」，不改任何输出。
+        var groups = ctx.Defs.GroupBy(d => d.FileAbs, StringComparer.OrdinalIgnoreCase).ToList();
+        var outcomes = new FileOutcome[groups.Count];
+        var dop = ParallelWork.Degree(Parallelism, groups.Count);
+        LastParallelism = dop;
+        // ★ Task 8 Step 3：下发顺序按**文件字节数降序**（LPT 调度）——
+        //   重活先跑，尾延迟从「最后一个大文件」降为「总工作量 / 并行度」。
+        //   `order` 只影响**谁先算**，诊断回放仍按 `outcomes` 的原始下标，输出顺序不变。
+        var order = ParallelWork.LongestFirst(groups, g => g.Key);
+        // ★ Task 8 Step 1：遍历总时钟（含文件 IO + XmlReader 推进 + 三次子调用）。
+        var tTrav = System.Diagnostics.Stopwatch.StartNew();
+        void ProcessOne(int gi)
         {
+            var group = groups[gi];
+            var c = new Counters();
+            var assignableMemo = new Dictionary<Type, IReadOnlyList<string>>();
+            var frames = new Frame?[64];
             // GroupBy 保留组内源顺序 = 文件内文档序（DefScanner 逐文件流式产出）。
             var defsInFile = group as IList<RawDef> ?? group.ToList();
-            if (defsInFile.Count == 0) continue;
+            if (defsInFile.Count == 0) { outcomes[gi] = new FileOutcome(c, new List<Diagnostic>()); return; }
 
             var current = (RawDef?)null;
             var defIdx = 0;
@@ -149,6 +261,7 @@ public sealed class ReferenceCheck : ICheck
 
                     if (reader.NodeType == XmlNodeType.Element)
                     {
+                        c.Elements++;
                         var depth = reader.Depth;
                         if (depth == 0) continue;                       // <Defs>
                         if (depth >= frames.Length) { frames[^1] = null; continue; }   // 防御：超深
@@ -188,7 +301,12 @@ public sealed class ReferenceCheck : ICheck
                         }
 
                         var parent = frames[depth - 1];
-                        frames[depth] = parent is null ? null : ChildFrame(parent, reader, line, index, catalog, c, current!);
+                        // ★ Task 8 Step 1：ChildFrame 的时间片（含其内部的 Dispatch）。
+                        var cfTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                        var childFrame = parent is null ? null : ChildFrame(parent, reader, line, index, catalog, c, current!);
+                        c.ChildFrames++;
+                        c.ChildFrameTicks += System.Diagnostics.Stopwatch.GetTimestamp() - cfTicks;
+                        frames[depth] = childFrame;
                         continue;
                     }
 
@@ -204,8 +322,12 @@ public sealed class ReferenceCheck : ICheck
                                 if (!string.IsNullOrEmpty(value))
                                     foreach (var slot in f.SelfRefs)
                                     {
+                                        // ★ Task 8 Step 1：单条候选判定的时间片（含 Contains/Assignable/Suggest）。
+                                        c.DiagCalls++;
+                                        var diagTicks = System.Diagnostics.Stopwatch.GetTimestamp();
                                         var diag = BuildDiagnostic(slot, value, f.OwnerType, current, f.StartLine,
                                             index, set, assignableMemo, c);
+                                        c.DiagTicks += System.Diagnostics.Stopwatch.GetTimestamp() - diagTicks;
                                         if (diag is null) continue;
                                         if (ctx.TargetModPackageId is not null
                                             && !string.Equals(current.ModPackageId, ctx.TargetModPackageId,
@@ -231,13 +353,12 @@ public sealed class ReferenceCheck : ICheck
             catch (XmlException) { /* 解析失败由 RD2001 报；本规则不重复报 */ }
             catch (IOException) { /* 同上：读不了的文件不该让整条规则炸掉 */ }
 
-            // ★ `yield return` 不能在带 catch 的 try 里（CS1626）：本文件的诊断先收进 pending，
-            //   出了 try 再逐个交出。语义不变 —— 顺序仍是「文件内文档序、def 内行序」。
-            foreach (var diag in pending) yield return diag;
-
+            // ★ Task 8 Step 3：诊断先收在本文件自己的 pending 里，等全部文件跑完再由 Run
+            //   **按文件下标顺序**回放（顺序仍是「文件内文档序、def 内行序」，与串行逐条一致）。
+            //   （`yield return` 也不能出现在带 catch 的 try 里 —— CS1626。）
             if (!parityOk || defIdx != defsInFile.Count)
             {
-                yield return new Diagnostic(Codes.XmlParseFailed, Severity.Error, Scope.Offline,
+                pending.Add(new Diagnostic(Codes.XmlParseFailed, Severity.Error, Scope.Offline,
                     $"def 归属键与 DefScanner 的 def 集合不一致（流式读到 {defIdx} / DefScanner {defsInFile.Count}），"
                     + "本文件的引用解析被跳过以免把邻居 def 的引用算到本 def 头上",
                     "这是本工具的边界错误：两侧都按 depth==1 判定 def，本应给出同一集合；把该文件与出现次数报给工具作者",
@@ -249,33 +370,83 @@ public sealed class ReferenceCheck : ICheck
                         ["streamDefs"] = defIdx.ToString(),
                         ["rawDefs"] = defsInFile.Count.ToString(),
                         ["firstMismatchRawLine"] = defIdx < defsInFile.Count ? defsInFile[defIdx].Line.ToString() : "(none)",
-                    });
+                    }));
             }
+            outcomes[gi] = new FileOutcome(c, pending);
+        }
+
+        // ── 执行：串行（dop==1，留作同一跑里的 A/B 对照）或按文件并行 ──────────────
+        //   用 ParallelWork（自建线程 + 原子领取）而不是 Parallel.For：后者在本机实测只跑到 ~5 路。
+        ParallelWork.Run(order.Length, dop, k => ProcessOne(order[k]));
+        LastThreadsUsed = ParallelWork.LastThreadsUsed;
+
+        tTrav.Stop();
+
+        // 合并：计数逐项相加；CustomSamples 按文件下标顺序取前 16 条（与串行「先到先得」同序）。
+        var all = new Counters();
+        foreach (var oc in outcomes)
+        {
+            if (oc is null) continue;
+            MergeCounters(all, oc.Counters);
+            foreach (var s in oc.Counters.CustomSamples)
+                if (all.CustomSamples.Count < 16) all.CustomSamples.Add(s);
+        }
+        // 诊断回放：严格按文件下标顺序 ⇒ 与串行的输出顺序逐条一致。
+        foreach (var oc in outcomes)
+        {
+            if (oc is null) continue;
+            foreach (var d in oc.Pending) yield return d;
         }
 
         sw.Stop();
+        // ★ Task 8 Step 1：分阶段耗时表（只在 `sim --timings` 打印，不进 --json）。
+        //   `SetDeclLoopMs` / `SetGeneratorModelMs` / `SetPostLoopMs` / `GenFactScanMs` 由
+        //   SimulatedDefSet / DefGeneratorModel 自报（它们知道自己的分段边界在哪儿）。
+        var freq = (double)System.Diagnostics.Stopwatch.Frequency;
+        long Ms(long ticks) => (long)Math.Round(ticks * 1000.0 / freq);
+        LastPhases = new ReferencePhases(
+            CatalogLoadMs: tCat.ElapsedMilliseconds,
+            IndexBuildMs: tIdx.ElapsedMilliseconds,
+            AnalyzeMs: tAna.ElapsedMilliseconds,
+            SetBuildMs: tSet.ElapsedMilliseconds,
+            SetDeclLoopMs: set.BuildDeclLoopMs,
+            SetGeneratorModelMs: set.BuildGeneratorModelMs,
+            SetPostLoopMs: set.BuildPostLoopMs,
+            GenFactScanMs: set.GeneratorModel?.FactScanElapsedMs ?? 0,
+            TraversalMs: tTrav.ElapsedMilliseconds,
+            ChildFrameMs: Ms(all.ChildFrameTicks),
+            DispatchMs: Ms(all.DispatchTicks),
+            BuildDiagMs: Ms(all.DiagTicks),
+            Elements: all.Elements,
+            ChildFrames: all.ChildFrames,
+            Dispatches: all.Dispatches,
+            LoaderProbes: all.LoaderProbes,
+            LoaderProbeMs: Ms(all.LoaderProbeTicks),
+            ClassAttrProbes: all.ClassAttrProbes,
+            DiagCalls: all.DiagCalls);
         LastIndex = index;
         LastSet = set;
         LastStats = new ReferenceStats(
-            DeclarationsTraversed: c.Traversed,
-            DeclarationsSkippedByMayRequire: c.SkipMayRequire,
-            DeclarationsUnknownType: c.UnknownType,
-            ReferenceSites: c.Sites,
-            ResolvedExact: c.Exact,
-            ResolvedViaFullNameKey: c.FullName,
-            ResolvedViaAssignableTypes: c.Assignable,
-            MissingInScope: c.Missing,
-            Reported: c.Reported,
-            CustomLoaderSubtreesSkipped: c.CustomSkipped,
-            UnknownFieldElements: c.UnknownFields,
-            AbstractElementWithoutClass: c.AbstractNoClass,
-            ClassDispatchHits: c.ClassHits,
-            ClassDispatchMisses: c.ClassMisses,
-            ClassTypeMismatch: c.ClassTypeMismatch,
-            ParityFailures: c.ParityFailures,
-            AbstractDeclarationsSkipped: c.AbstractSkipped,
+            DeclarationsTraversed: all.Traversed,
+            DeclarationsSkippedByMayRequire: all.SkipMayRequire,
+            DeclarationsUnknownType: all.UnknownType,
+            ReferenceSites: all.Sites,
+            ResolvedExact: all.Exact,
+            ResolvedViaFullNameKey: all.FullName,
+            ResolvedViaAssignableTypes: all.Assignable,
+            MissingInScope: all.Missing,
+            ResolvedByGeneratedName: all.GeneratedHits,
+            Reported: all.Reported,
+            CustomLoaderSubtreesSkipped: all.CustomSkipped,
+            UnknownFieldElements: all.UnknownFields,
+            AbstractElementWithoutClass: all.AbstractNoClass,
+            ClassDispatchHits: all.ClassHits,
+            ClassDispatchMisses: all.ClassMisses,
+            ClassTypeMismatch: all.ClassTypeMismatch,
+            ParityFailures: all.ParityFailures,
+            AbstractDeclarationsSkipped: all.AbstractSkipped,
             ElapsedMs: sw.ElapsedMilliseconds,
-            CustomLoaderSamples: c.CustomSamples);
+            CustomLoaderSamples: all.CustomSamples);
     }
 
     // ────────────────────────────────────────────────────────────────────────────
@@ -337,7 +508,7 @@ public sealed class ReferenceCheck : ICheck
             if (et is null) { c.AbstractNoClass++; return null; }
             var f = new Frame(et, line) { OwnerType = parent.OwnerType, SelfRefs = parent.ChildRefs };
             // 引用槽非空 ⇒ 这个 li 的文本就是引用值，不需要再下钻（也避免抽象类型误报边界）
-            return parent.ChildRefs.Count > 0 ? f : Dispatch(f, reader, catalog, c, loc);
+            return parent.ChildRefs.Count > 0 ? f : DispatchTimed(f, reader, catalog, c, loc);
         }
 
         // ② 字典条目：`<f><li><key>…</key><value>…</value></li></f>`
@@ -361,11 +532,11 @@ public sealed class ReferenceCheck : ICheck
             if (name == "key")
                 return parent.KeyRefs.Count > 0
                     ? new Frame(parent.KeyType, line) { OwnerType = parent.OwnerType, SelfRefs = parent.KeyRefs }
-                    : Dispatch(new Frame(parent.KeyType, line) { OwnerType = parent.OwnerType }, reader, catalog, c, loc);
+                    : DispatchTimed(new Frame(parent.KeyType, line) { OwnerType = parent.OwnerType }, reader, catalog, c, loc);
             if (name == "value")
                 return parent.ValueRefs.Count > 0
                     ? new Frame(parent.ValueType, line) { OwnerType = parent.OwnerType, SelfRefs = parent.ValueRefs }
-                    : Dispatch(new Frame(parent.ValueType, line) { OwnerType = parent.OwnerType }, reader, catalog, c, loc);
+                    : DispatchTimed(new Frame(parent.ValueType, line) { OwnerType = parent.OwnerType }, reader, catalog, c, loc);
             c.UnknownFields++;
             return null;
         }
@@ -385,7 +556,7 @@ public sealed class ReferenceCheck : ICheck
             case RefContainerKind.Scalar:
             {
                 var f = new Frame(ft, line) { OwnerType = parent.Current.FullName ?? parent.Current.Name, SelfRefs = refs };
-                return refs.Count > 0 ? f : Dispatch(f, reader, catalog, c, loc);
+                return refs.Count > 0 ? f : DispatchTimed(f, reader, catalog, c, loc);
             }
             case RefContainerKind.List:
             case RefContainerKind.Set:
@@ -419,15 +590,42 @@ public sealed class ReferenceCheck : ICheck
     /// 规则 D：元素代表的对象类型是抽象类时按 `Class=` 派发。派发不到 ⇒ 工具边界
     /// （计数 + 停止下钻，**绝不报 error**）。
     /// </summary>
+    /// <summary>
+    /// ★ Task 8 Step 1：<see cref="Dispatch"/> 的计时外壳。**不改任何语义** —— 只为了把它的耗时
+    /// 从 `ChildFrame`（父阶段）里单独拆出来，否则「Dispatch 是不是主线」只能靠猜。
+    /// 时间片与 <c>LoaderProbeTicks</c> 是包含关系（后者是前者的子集），报告里按「父/子」读。
+    /// </summary>
+    private static Frame DispatchTimed(Frame f, XmlReader reader, ManagedAssemblyCatalog catalog, Counters c,
+        string location)
+    {
+        var t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        var r = Dispatch(f, reader, catalog, c, location);
+        c.DispatchTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+        return r;
+    }
+
     private static Frame Dispatch(Frame f, XmlReader reader, ManagedAssemblyCatalog catalog, Counters c,
         string location)
     {
         // 边界 1：自定义 XML loader 类型（65 个）—— XML 形状由 loader 代码决定，反射推不出 ⇒ 进入即停。
         //   这里同时把「进入了多少个这样的子树」计数（防「没检查」被读成「没问题」）。
-        if (f.Current is not null && ManagedAssemblyCatalog.HasCustomXmlLoader(f.Current))
+        // ★ Task 8 Step 1：这一句是整个 Dispatch 里唯一会做**反射**的地方，且它在热路径上
+        //   （每一个非引用标量元素、集合里每个 <li>、字典 key/value 都会走到这里）。
+        //   所以不仅计次数，还把**累加时间片**单独打出来 —— 靠它才能判定「单次成本高」还是「次数多」。
+        c.Dispatches++;
+        var hasLoader = false;
+        var loaderProbeType = f.Current;
+        if (loaderProbeType is not null)
+        {
+            c.LoaderProbes++;
+            var lp = System.Diagnostics.Stopwatch.GetTimestamp();
+            hasLoader = ManagedAssemblyCatalog.HasCustomXmlLoader(loaderProbeType);
+            c.LoaderProbeTicks += System.Diagnostics.Stopwatch.GetTimestamp() - lp;
+        }
+        if (hasLoader)
         {
             c.CustomSkipped++;
-            if (c.CustomSamples.Count < 16) c.CustomSamples.Add($"{location} {f.Current.Name}");
+            if (c.CustomSamples.Count < 16) c.CustomSamples.Add($"{location} {loaderProbeType!.Name}");
             f.Current = null;
             return f;
         }
@@ -438,6 +636,7 @@ public sealed class ReferenceCheck : ICheck
         //   只对抽象类型派发会把这一整批（以及它们内部的引用）全部看不见。
         var declared = f.Current;
         var cls = reader.GetAttribute("Class");
+        if (cls is not null) c.ClassAttrProbes++;
         if (cls is not null)
         {
             var t = catalog.ResolveXmlTypeName(cls);
@@ -506,9 +705,15 @@ public sealed class ReferenceCheck : ICheck
             else { ok = false; basis = "exact-type"; c.Missing++; }
         }
 
-        if (ok) return null;
+        if (ok)
+        {
+            if (set.AnyGeneratedHit(keys, value)) c.GeneratedHits++;
+            return null;
+        }
 
-        var suggestions = set.Suggest(keys, value, 5);
+        // ★ Task 8：走「按目标类型建池 + 一遍扫 + 运行期 cutoff」的**精确等价**加速路径
+        //   （旧的 `set.Suggest(keys, value, 5)` 保留在 SimulatedDefSet 里，供同运行 A/B 与自测对照）。
+        var suggestions = set.SuggestFor(target, keys, value, 5);
         var alsoKnown = set.TypesContaining(value, 5);
 
         var hint = suggestions.Count > 0

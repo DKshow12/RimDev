@@ -43,6 +43,23 @@ public static class SimCommand
         var scope = ParseScope(args, out var scopeError);
         if (scopeError is not null) { Console.Error.WriteLine(scopeError); return 3; }
         var json = args.Contains("--json");
+        // ★ Task 8 Step 1：`--timings` = 打印引用解析的分阶段耗时表 + 覆盖面计数。
+        //   默认关闭 —— 保证不带该开关时的输出与优化前**逐条等价**（Step 2 的等价性门槛）。
+        var timings = args.Contains("--timings");
+        // ★ Task 8 Step 3：`--parallel N` 显式指定文件遍历并行度（1 = 串行，留作同一跑里的 A/B 对照）。
+        var parallel = 0;
+        var parallelOpt = Option(args, "--parallel");
+        if (parallelOpt is not null)
+        {
+            if (!int.TryParse(parallelOpt, out parallel) || parallel < 0)
+            {
+                Console.Error.WriteLine("未知或缺值的 --parallel（需要一个 >= 0 的整数；0 = 自动 = 处理器数）");
+                return 3;
+            }
+        }
+
+        // ★ Task 8 Step 1：整跑墙钟（含枚举 / 解析 / 三条规则 / 输出）——分阶段归因用。
+        var swAll = System.Diagnostics.Stopwatch.StartNew();
 
         GameEnv env;
         try { env = GameEnvProbe.Discover(); }
@@ -96,13 +113,18 @@ public static class SimCommand
             .Add(new PatchCheck())
             .Add(new ParentChainCheck())
             .Add(new ShadowingCheck())
-            .Add(new ReferenceCheck());
+            .Add(new ReferenceCheck { Parallelism = parallel });
         var diags = runner.Run(ctx).ToList();
         var patch = runner.Checks.OfType<PatchCheck>().FirstOrDefault();
         var parent = runner.Checks.OfType<ParentChainCheck>().FirstOrDefault();
         var shadow = runner.Checks.OfType<ShadowingCheck>().FirstOrDefault();
         var reference = runner.Checks.OfType<ReferenceCheck>().FirstOrDefault();
         sw.Stop();
+        var phaseEnumMs = tEnum.ElapsedMilliseconds;
+        var phaseParseMs = tParse.ElapsedMilliseconds;
+        var phaseChecksMs = sw.ElapsedMilliseconds - phaseEnumMs - phaseParseMs;
+        // ★ 输出阶段：JSON 序列化 + Console 写入（48 MB 量级，必须单列，别混进解析里）。
+        var tOut = System.Diagnostics.Stopwatch.StartNew();
 
         var byCode = diags.GroupBy(d => d.Code, StringComparer.Ordinal)
             .OrderBy(g => g.Key, StringComparer.Ordinal)
@@ -233,6 +255,8 @@ public static class SimCommand
                         resolvedViaFullNameKey = refs.ResolvedViaFullNameKey,
                         resolvedViaAssignableTypes = refs.ResolvedViaAssignableTypes,
                         danglingReferences = refs.MissingInScope,
+                        // ★ Task 8 Step 2：覆盖面锁的一项 —— 靠运行期生成名命中的引用点数。
+                        resolvedByGeneratedName = refs.ResolvedByGeneratedName,
                         reported = refs.Reported,
                         customLoaderSubtreesSkipped = refs.CustomLoaderSubtreesSkipped,
                         customLoaderSamples = refs.CustomLoaderSamples,
@@ -301,6 +325,12 @@ public static class SimCommand
                     fingerprint = d.Fingerprint,
                 }),
             }, new JsonSerializerOptions { WriteIndented = true }));
+            // ★ Task 8 Step 1：分阶段表走 **stderr** —— `--json` 的 stdout 必须逐字节稳定
+            //   （`01` §4.8 的 Step 6 要求：同一份输入两次运行除 run.* 外不得有任何差异）。
+            tOut.Stop();
+            swAll.Stop();
+            if (timings) PrintTimings(Console.Error, reference, swAll, phaseEnumMs, phaseParseMs, phaseChecksMs, tOut,
+                runner.LastCheckMs, parent?.AnalyzeMs ?? -1, parent?.BodyMs ?? -1, parent?.SuggestMs ?? -1);
             return error > 0 ? 2 : 0;
         }
 
@@ -362,9 +392,86 @@ public static class SimCommand
         Console.WriteLine($"                引用解析自身 {refs?.ElapsedMs ?? 0} ms，补丁扫描 "
                           + $"{parents?.PatchScanElapsedMs ?? 0} ms，峰值工作集 "
                           + $"{Math.Round(System.Diagnostics.Process.GetCurrentProcess().PeakWorkingSet64 / 1048576.0, 1)} MB");
+        tOut.Stop();
+        swAll.Stop();
+        if (timings) PrintTimings(Console.Out, reference, swAll, phaseEnumMs, phaseParseMs, phaseChecksMs, tOut,
+            runner.LastCheckMs, parent?.AnalyzeMs ?? -1, parent?.BodyMs ?? -1, parent?.SuggestMs ?? -1);
         Console.WriteLine($"结果            error {error}   warning {warning}   info {info}");
         foreach (var kv in byCode) Console.WriteLine($"    [{kv.Key}] {kv.Value} 条");
         return error > 0 ? 2 : 0;
+    }
+
+    /// <summary>
+    /// ★ 第 3 期 Task 8 Step 1/Step 2：引用解析的**分阶段耗时表 + 覆盖面计数**。
+    ///
+    /// 为什么必须两者一起打：
+    ///   · 只有耗时 ⇒ 无法判断「该缓存」还是「该少做」；
+    ///   · 只有计数 ⇒ 无法知道单次多贵。
+    /// 覆盖面那一段是 Step 3「不许用少查一部分引用换性能」的**唯一证据**：
+    /// 优化前后这一段必须**逐项相等**，任何一项变了都说明覆盖面动了。
+    ///
+    /// 为什么**不进 `--json`**：任何 `Stopwatch` 取值两次运行必然不同，而 `01` §4.8 的 Step 6
+    /// 要求「同一份输入跑两次、除 `run.*` 外逐字节相同」；进了 JSON 那条要求就不可能成立。
+    /// `--json --timings` 时本表走 **stderr**，stdout 的 JSON 保持逐字节稳定。
+    /// </summary>
+    private static void PrintTimings(System.IO.TextWriter w, ReferenceCheck? reference,
+        System.Diagnostics.Stopwatch? wall = null, long enumMs = 0, long parseMs = 0, long checksMs = 0,
+        System.Diagnostics.Stopwatch? outSw = null,
+        IReadOnlyList<(string Id, long Ms)>? checks = null,
+        long parentAnalyzeMs = -1, long parentBodyMs = -1, long parentSuggestMs = -1)
+    {
+        // ★ Task 8 Step 1：CLI 级阶段表 —— 「引用解析之外」的时间同样要有账，
+        //   否则 30 s 的目标会被一段没人量过的开销挡死。
+        if (wall is not null)
+        {
+            var outMs = outSw?.ElapsedMilliseconds ?? 0;
+            w.WriteLine("[timings] CLI 阶段（ms；整跑 ⊃ {枚举 + 解析 + 三条规则}，输出单列）");
+            w.WriteLine($"  整跑墙钟（至写出完成） {wall.ElapsedMilliseconds,8} ms");
+            w.WriteLine($"    ├ 阶段 1 枚举文件     {enumMs,8} ms");
+            w.WriteLine($"    ├ 阶段 2 解析 def 头  {parseMs,8} ms（DefScanner.Scan + DefIndex.Build）");
+            w.WriteLine($"    ├ 阶段 3–5 三条规则   {checksMs,8} ms（Patch / ParentChain / Shadowing / Reference）");
+            if (checks is not null)
+                foreach (var (id, ms) in checks)
+                    w.WriteLine($"    │    ├ {id,-14}{ms,8} ms");
+            if (parentAnalyzeMs >= 0 || parentSuggestMs >= 0)
+                w.WriteLine($"    │    └ ParentChain 细分：Analyze {parentAnalyzeMs} ms / 其余 {parentBodyMs} ms"
+                    + $"（其中候选建议 {parentSuggestMs} ms）");
+            w.WriteLine($"    └ 输出 序列化 + 写出  {outMs,8} ms");
+        }
+        var p = reference?.LastPhases;
+        var r = reference?.LastStats;
+        w.WriteLine("[timings] 引用解析分阶段（ms 与调用次数；嵌套关系 = 父阶段含子阶段）");
+        if (p is null)
+        {
+            w.WriteLine("  引用解析未运行（元数据不可用？）");
+            return;
+        }
+        w.WriteLine($"  catalog 载入           {p.CatalogLoadMs,8} ms");
+        w.WriteLine($"  ReferenceFieldIndex    {p.IndexBuildMs,8} ms");
+        w.WriteLine($"  InheritanceLayer       {p.AnalyzeMs,8} ms");
+        w.WriteLine($"  SimulatedDefSet        {p.SetBuildMs,8} ms   声明循环 {p.SetDeclLoopMs} / 生成器建模 {p.SetGeneratorModelMs}"
+                    + $"（其中事实扫描 {p.GenFactScanMs}）/ 收尾排序 {p.SetPostLoopMs}");
+        w.WriteLine($"  文件遍历               {p.TraversalMs,8} ms   元素 {p.Elements} / ChildFrame 调用 {p.ChildFrames}"
+                    + $"（并行度 {reference?.LastParallelism ?? 1} / 实际线程 {reference?.LastThreadsUsed ?? 1}）");
+        w.WriteLine($"    ├ ChildFrame 总耗时  {p.ChildFrameMs,8} ms");
+        w.WriteLine($"    │   └ Dispatch      {p.DispatchMs,8} ms   调用 {p.Dispatches}");
+        w.WriteLine($"    │       └ loader 反射 {p.LoaderProbeMs,7} ms   调用 {p.LoaderProbes}（Class= 属性读取 {p.ClassAttrProbes} 次）");
+        w.WriteLine($"    └ 候选判定总耗时     {p.BuildDiagMs,8} ms   调用 {p.DiagCalls}");
+        w.WriteLine($"  引用解析自身合计        {r?.ElapsedMs ?? 0,8} ms");
+        w.WriteLine("[coverage] 覆盖面计数（Step 2：优化前后必须逐项相等）");
+        w.WriteLine($"  引用点总数                     {r?.ReferenceSites ?? 0}");
+        w.WriteLine($"  悬空数（RD3001 候选）          {r?.MissingInScope ?? 0}");
+        w.WriteLine($"  生成名命中数                   {r?.ResolvedByGeneratedName ?? 0}"
+                    + $"（集合内生成名 {reference?.LastSet?.GeneratedDefNames ?? 0} 个）");
+        w.WriteLine($"  Class= 派发 命中 / 未命中      {r?.ClassDispatchHits ?? 0} / {r?.ClassDispatchMisses ?? 0}"
+                    + $"（类型不匹配 {r?.ClassTypeMismatch ?? 0}）");
+        w.WriteLine($"  自定义 loader 跳过数           {r?.CustomLoaderSubtreesSkipped ?? 0}");
+        w.WriteLine($"  解析命中 exact / fullname / 抽象槽 {r?.ResolvedExact ?? 0} / {r?.ResolvedViaFullNameKey ?? 0}"
+                    + $" / {r?.ResolvedViaAssignableTypes ?? 0}");
+        w.WriteLine($"  声明遍历 {r?.DeclarationsTraversed ?? 0} / MayRequire 跳过 {r?.DeclarationsSkippedByMayRequire ?? 0}"
+                    + $" / 类型未知 {r?.DeclarationsUnknownType ?? 0} / 抽象声明跳过 {r?.AbstractDeclarationsSkipped ?? 0}");
+        w.WriteLine($"  未知字段元素 {r?.UnknownFieldElements ?? 0} / 抽象无 Class= {r?.AbstractElementWithoutClass ?? 0}"
+                    + $" / 归属键不一致 {r?.ParityFailures ?? 0} / 报告 {r?.Reported ?? 0}");
     }
 
     /// <summary>sim 自己的作用域说明（`--all` 在这里是**全库**，与 `check` 的别名语义不同）。</summary>
@@ -432,7 +539,10 @@ public static class SimCommand
         Console.WriteLine("  <mod>                  等价于 --scope target + 该 mod 作过滤器");
         Console.WriteLine();
         Console.WriteLine("  --json                 按 01 §4.8 schema 输出；同一输入两次运行除 run.* 外逐字节相同");
+        Console.WriteLine("  --timings              额外打印引用解析分阶段耗时表 + 覆盖面计数（不进 --json；");
+        Console.WriteLine("                         与 --json 同用时走 stderr，以保住 stdout 的逐字节稳定性）");
         Console.WriteLine("  --help, -h             打印本帮助（退出码 0）");
+        Console.WriteLine("  --parallel N           文件遍历并行度（0 = 自动 = 处理器数；1 = 串行，用于 A/B 对照）");
         Console.WriteLine();
         Console.WriteLine("退出码：0 无 error；2 有 error；3 参数错；4 环境不满足；5 目标 mod 找不到");
     }

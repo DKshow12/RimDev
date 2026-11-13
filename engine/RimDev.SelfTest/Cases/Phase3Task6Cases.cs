@@ -504,6 +504,62 @@ public static class Phase3Task6Cases
             Console.WriteLine($"      [样本] Shot_MachineGun 的候选 = {a.Item1}");
         });
 
+        T.Case("★★ Task 8：SuggestFor（按类型建池 + 一遍扫 + 运行期 cutoff）≡ 旧 Suggest —— 真语料逐条 A/B", () =>
+        {
+            var ctx = ActiveContext();
+            var set = SimulatedDefSet.Build(ctx, InheritanceLayer.Analyze(ctx), Catalog.Value);
+            var index = ReferenceFieldIndex.Build(Catalog.Value);
+
+            // 目标类型取自**真实的引用槽**（与 Run 的调用面同源）；候选键走公开的 CandidateTypeKeys。
+            var targets = new List<Type>();
+            foreach (var shape in index.Shapes)
+            {
+                foreach (var slot in shape.AllRefSlots)
+                {
+                    var t = slot.TargetDefType;
+                    if (t is null || targets.Contains(t)) continue;
+                    targets.Add(t);
+                    if (targets.Count >= 6) break;
+                }
+                if (targets.Count >= 6) break;
+            }
+
+            // 探针 = 真语料 defName 采样后「删掉中间一个字符」⇒ 多半不在集合里，正好压到候选判定路径。
+            var probes = new List<string>();
+            var step = Math.Max(1, ctx.Defs.Count / 60);
+            for (var i = 0; i < ctx.Defs.Count && probes.Count < 40; i += step)
+            {
+                var n = ctx.Defs[i].DefName;
+                if (string.IsNullOrEmpty(n) || n.Length < 5) continue;
+                probes.Add(n.Remove(n.Length / 2, 1));
+            }
+
+            var swt = System.Diagnostics.Stopwatch.StartNew();
+            var compared = 0;
+            var mismatch = 0;
+            string? firstBad = null;
+            foreach (var t in targets)
+            {
+                var keys = SimulatedDefSet.CandidateTypeKeys(t);
+                foreach (var probe in probes)
+                {
+                    var legacy = string.Join("|", set.Suggest(keys, probe, 5));
+                    var fast = string.Join("|", set.SuggestFor(t, keys, probe, 5));
+                    compared++;
+                    if (legacy == fast) continue;
+                    mismatch++;
+                    firstBad ??= $"type={t.Name} probe={probe}｜legacy=[{legacy}]｜fast=[{fast}]";
+                }
+            }
+            swt.Stop();
+
+            T.True(compared > 0, "对照次数必须 > 0（否则本用例是空转，会静默通过）");
+            T.Eq(mismatch, 0, "SuggestFor 必须与旧 Suggest 逐条相同"
+                + (firstBad is null ? "" : ("；首条不一致：" + firstBad)));
+            Console.WriteLine($"      [样本] 类型 {targets.Count} × 探针 {probes.Count} = 对照 {compared} 次，"
+                + $"逐条相同，耗时 {swt.ElapsedMilliseconds} ms");
+        });
+
         T.Case("★★ parity 门禁：ctx.Defs 的行号与文件不一致 ⇒ RD2001(error) + 跳过该文件", () =>
         {
             // 判别性：把 ctx.Defs 的行号故意改错 ⇒ 必须响亮失败（报 RD2001 并跳过），

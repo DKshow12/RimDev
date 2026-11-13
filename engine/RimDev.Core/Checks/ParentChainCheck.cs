@@ -117,7 +117,12 @@ public sealed class ParentChainCheck : ICheck
         //   本规则只做两件事：① 把解析结果变成诊断；② 把统计块交给 CLI。
         //   过去这里内联写着 `ByAbstractName ?? ByDefName`，于是「解析」与「诊断」两套口径耦合在
         //   同一个类里，任何第二个消费方（环检测、统计、将来的 sim）都只能复制一遍 —— 必分叉。
+        var swAnalyze = System.Diagnostics.Stopwatch.StartNew();
         var analysis = InheritanceLayer.Analyze(ctx);
+        swAnalyze.Stop();
+        AnalyzeMs = swAnalyze.ElapsedMilliseconds;
+        var swBody = System.Diagnostics.Stopwatch.StartNew();
+        s_suggestTicks = 0;
         LastAnalysis = analysis;
 
         // ★ 第 3 期 Task 2b：名字池惰性建【一次】（旧实现每条诊断重建一次）。
@@ -227,6 +232,9 @@ public sealed class ParentChainCheck : ICheck
                     ["chainBrokenParentName"] = culprit,
                 });
         }
+
+        BodyMs = swBody.ElapsedMilliseconds;
+        SuggestMs = s_suggestTicks * 1000 / System.Diagnostics.Stopwatch.Frequency;
     }    /// <summary>
     /// 从 <paramref name="start"/> 向上走 ParentName 链；成环则返回 true。
     /// <paramref name="chain"/> = 面向继承的展示名链；<paramref name="declarations"/> = 对应的声明链。
@@ -271,13 +279,23 @@ public sealed class ParentChainCheck : ICheck
     /// ★ 旧实现（已删）每报一条就重建一次名字池并对**每个**名字调
     ///   <see cref="RimDev.Core.Metadata.MemberInfoIndex.Similarity"/>（全库 436 × 32 万 ≈ 1.4 亿次，
     ///   每次都 ToLowerInvariant + 两个 int[] 分配，实测 482 s = 全库 615 s 的 78%）。
-    ///   现在改成：<see cref="NameSuggestionPool"/> 惰性建一次池（并预计算小写）+ 逐名字 memo +
-    ///   长度窗/首字符捷径/带状 Levenshtein 截断 —— 预筛只剪「必然 score ≤ 0」的候选，
-    ///   排序与 tie-break 保持原样，所以**同样的诊断、同样的条数、同样的内容**。
     /// </summary>
+    /// <summary>★ Task 8 Step 1：`InheritanceLayer.Analyze` 的墙钟（本检查是它的第一个调用方）。</summary>
+    public long AnalyzeMs { get; private set; }
+    /// <summary>★ Task 8 Step 1：Analyze 之后到报告结束的墙钟（两条诊断循环 + 候选建议）。</summary>
+    public long BodyMs { get; private set; }
+    /// <summary>★ Task 8 Step 1：候选名字建议的累计墙钟（惰性建池 + 全部 Suggest 调用）。</summary>
+    public long SuggestMs { get; private set; }
+    // 诊断用累加器（本检查单线程跑一次）。
+    private static long s_suggestTicks;
+
+    /// <summary>在**已经走好的声明链**上判环；成环则返回 true。</summary>
     private static List<string> SuggestParent(CheckContext ctx, string parentName, ref NameSuggestionPool? pool)
     {
-        pool ??= NameSuggestionPool.FromIndex(ctx.Index);
-        return pool.Suggest(parentName, 5);
+        var t = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (pool is null) pool = NameSuggestionPool.FromIndex(ctx.Index);
+        var r = pool.Suggest(parentName, 5);
+        s_suggestTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t;
+        return r;
     }
 }

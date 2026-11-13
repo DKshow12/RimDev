@@ -39,7 +39,7 @@ public sealed class ManagedAssemblyCatalog
     //   含 '.' 的名字必须只认全名精确匹配（见 FindExactFullName 与 FieldNameCheck 的机制 B）。
     private readonly Dictionary<string, Type> _byFullName = new(StringComparer.Ordinal);
 
-    private readonly Dictionary<string, MemberInfoIndex> _memberCache = new(StringComparer.Ordinal);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, MemberInfoIndex> _memberCache = new(StringComparer.Ordinal);
     private readonly Type[] _types;
 
     private ManagedAssemblyCatalog(string managedDir, Type[] types,
@@ -189,9 +189,9 @@ public sealed class ManagedAssemblyCatalog
     }
 
     public MemberInfoIndex MembersOf(Type type) =>
-        _memberCache.TryGetValue(type.FullName ?? type.Name, out var idx)
-            ? idx
-            : _memberCache[type.FullName ?? type.Name] = new MemberInfoIndex(type);
+        // ★ Task 8：引用解析改为按文件并行后，惰性成员表也必须能扛并发（同一族的坑见
+        //   ReferenceFieldIndex.ShapeOf：普通 Dictionary 就地写会「并发改非并发集合」而崩）。
+        _memberCache.GetOrAdd(type.FullName ?? type.Name, key => new MemberInfoIndex(type));
 
     public MemberInfoIndex? MembersOf(string typeName)
     {

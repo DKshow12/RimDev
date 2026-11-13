@@ -9,6 +9,7 @@ if (args.Length == 0)
 return args[0] switch
 {
     "env" => EnvCommand.Run(args),
+    "api" => ApiCommand.Run(args),
     "--version" => PrintVersion(),
     _ => Unknown(args[0])
 };

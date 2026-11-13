@@ -5,5 +5,6 @@ EnvCases.Run();
 MetadataCases.Run();
 NameCases.Run();
 CatalogCases.Run();
+DefScanCases.Run();
 
 return T.Report();

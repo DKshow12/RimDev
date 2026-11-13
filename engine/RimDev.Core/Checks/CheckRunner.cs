@@ -112,7 +112,10 @@ public sealed class CheckRunner
             // ★ 第 3 期 Task 6：引用解析（RD3001）。放最后 —— 它要自己流式读一遍全部 def 文件
             //   （在**同一次**读取里同时产出 def 归属与引用值），并建一次有效 def 集合
             //   （SimulatedDefSet，来源是 Task 5b 的 InheritanceLayer）。
-            .Add(new ReferenceCheck());
+            .Add(new ReferenceCheck())
+            // ★★ 第 3 期 Task 26：About.xml 三个附加特性的消费侧
+            //   （实测 302 / 107 / 2 个 mod 在用；长期被忽略）。
+            .Add(new AboutFeatureCheck());
     }
 
     public IReadOnlyList<Diagnostic> Run(CheckContext ctx, Func<Diagnostic, bool>? filter = null)

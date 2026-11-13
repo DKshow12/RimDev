@@ -145,7 +145,11 @@ public sealed class ModCatalog
                 HasAssemblies: Directory.Exists(Path.Combine(root, "Assemblies")),
                 AboutPath: hasAbout ? about : null,
                 AboutError: aboutInfo.Error,
-                Resolution: resolved);
+                Resolution: resolved,
+                // ★ Task 26：三个 About.xml 附加特性（实测 107 / 302 / 2 个 mod 在用）。
+                DependenciesByVersion: aboutInfo.DependenciesByVersion,
+                AlternativePackageIds: aboutInfo.AlternativePackageIds,
+                IncompatibleWith: aboutInfo.IncompatibleWith);
 
             if (byPkg.TryGetValue(packageId, out var existing))
             {

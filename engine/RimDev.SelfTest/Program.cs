@@ -52,6 +52,21 @@ if (args.Contains("--task9b-cases"))
 }
 // ★ 第 3 期 Task 9c：按需入口 `rimdev-selftest --task9c-cases`（只跑本 Task 的用例，约十秒 ——
 //   其中 index/files/check×2/sim 各一次真扫描）。
+if (args.Contains("--task26c-cases"))
+{
+    T.RunFile("phase3-task26c", Phase3Task26cCases.Run);
+    return T.Report();
+}
+if (args.Contains("--task26b-cases"))
+{
+    T.RunFile("phase3-task26b", Phase3Task26bCases.Run);
+    return T.Report();
+}
+if (args.Contains("--task26-cases"))
+{
+    T.RunFile("phase3-task26", Phase3Task26Cases.Run);
+    return T.Report();
+}
 if (args.Contains("--task24-cases"))
 {
     T.RunFile("phase3-task24", Phase3Task24Cases.Run);
@@ -218,5 +233,11 @@ T.RunFile("phase3-task21", Phase3Task21Cases.Run);
 T.RunFile("phase3-task22", Phase3Task22Cases.Run);
 // ★ 第 3 期 Task 24：About.xml 解析失败必须报出（不许静默丢弃）
 T.RunFile("phase3-task24", Phase3Task24Cases.Run);
+// ★ 第 3 期 Task 26：About.xml 四个附加特性（302/107/2 个 mod 在用的那批）
+T.RunFile("phase3-task26", Phase3Task26Cases.Run);
+// ★ Task 26b：AboutFeatureCheck 行为验证（防「诊断 0 条」的假阴）
+T.RunFile("phase3-task26b", Phase3Task26bCases.Run);
+// ★ Task 26c：端到端验证（真实语料的 2 条冲突必须报出来）
+T.RunFile("phase3-task26c", Phase3Task26cCases.Run);
 
 return T.Report();

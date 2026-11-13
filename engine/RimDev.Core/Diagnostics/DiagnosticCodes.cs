@@ -179,6 +179,31 @@ public static class Codes
     /// </summary>
     public const string CustomPatchClass = "RD2014";
 
+    // ★★ Task 26：About.xml 三个附加特性的消费侧诊断（RD3xxx 族 = 引用/依赖层）。
+    //   选 RD3xxx 而不是继续挤 RD2xxx（2020–2027 已满），因为这三条都是
+    //   「声明的东西对不上」而不是「XML 写坏了」。
+
+    /// <summary>
+    /// ★ Task 26：<c>modDependencies</c> / <c>modDependenciesByVersion</c> 里声明的
+    /// **前置 mod 没有启用**。
+    /// <para>实测该特性有 107 个 mod 在用；不读它会把 1.7 版的依赖整段漏掉，
+    /// 于是「缺前置」变成假阴（真缺了也不报）。</para>
+    /// </summary>
+    public const string DependencyMissing = "RD3002";
+
+    /// <summary>
+    /// ★ Task 26：<c>incompatibleWith</c> 声明的**冲突 mod 同时启用**了。
+    /// <para>实测 302 个 mod 用了这个字段（中文社区最常见）。</para>
+    /// </summary>
+    public const string IncompatibleModActive = "RD3003";
+
+    /// <summary>
+    /// ★ Task 26：依赖里写的名字**是该 mod 的 <c>alternativePackageIds</c> 之一**。
+    /// <para>能对上就不该报缺前置 —— 否则是假阳。实测只有 2 个 mod 用备选名，
+    /// 但错了就会让人去装一个「已经装了」的前置。</para>
+    /// </summary>
+    public const string DependencyViaAlternativeId = "RD3004";
+
     /// <summary>
     /// ❹ 第 3 期 Task 5a：节点带 `MayRequire` / `MayRequireAnyOf`，但指定的 mod **未安装** ⇒ 引擎
     ///   `XmlInheritance.TryRegister` 会**跳过该节点**（它不会被建成 def、它的 `Name=` 也不会进父节点表）。

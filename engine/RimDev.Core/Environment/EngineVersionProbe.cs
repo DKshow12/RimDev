@@ -1,4 +1,5 @@
 using System.Reflection;
+using RimDev.Core.Metadata;
 using System.Runtime.Loader;
 
 namespace RimDev.Core.Environment;
@@ -28,7 +29,9 @@ public sealed record EngineVersionInfo(
     string CurrentVersionStringWithoutBuild,
     Version CurrentVersion,
     string Source,
-    string? Error)
+    string? Error,
+    // ★ Task 9：命中的是候选表里的哪一支（如 "RimWorld.VersionControl"）；未命中/降级为 null。
+    string? TypeFullName = null)
 {
     public const string ReflectionSource = "reflection";
     public const string EnvFallbackSource = "env-fallback";
@@ -64,6 +67,12 @@ public static class EngineVersionProbe
                 var managedDir = env.ManagedDir;
                 AssemblyLoadContext.Default.Resolving += (ctx, name) =>
                 {
+                    // ★ 与 ManagedAssemblyCatalog.Load 同一条纪律：框架程序集交给运行时，
+                    //   绝不从游戏目录载入（1.7.x 的游戏根里有整套 net10 运行时；
+                    //   net8 产物从那里载入 System.Runtime 会把解析链拖进自我递归）。
+                    if (ManagedAssemblyCatalog.IsFrameworkAssembly(name.Name))
+                        return null;
+
                     var p = Path.Combine(managedDir, name.Name + ".dll");
                     return File.Exists(p) ? ctx.LoadFromAssemblyPath(p) : null;
                 };
@@ -71,10 +80,14 @@ public static class EngineVersionProbe
             }
 
             var asm = Assembly.LoadFrom(Path.Combine(env.ManagedDir, "Assembly-CSharp.dll"));
-            // ★ 先按全名取（快，不枚举 16157 个类型）；失败才退化到按简单名扫。
-            var t = asm.GetType("RimWorld.VersionControl", throwOnError: false)
-                    ?? asm.GetTypes().FirstOrDefault(x => x.Name == "VersionControl");
-            if (t is null) throw new InvalidOperationException("Assembly-CSharp 里找不到 VersionControl 类型");
+            // ★ Task 9：候选列表逐个尝试（不要写版本分支）；命中哪支就记哪支，见 KnownTypeNames。
+            var t = TypeNameResolver.ResolveInAssembly(asm, KnownTypeNames.VersionControl, out var resolvedFullName)
+                    ?? asm.GetTypes().FirstOrDefault(x => x.Name == KnownTypeNames.VersionControl);
+            if (t is null)
+                throw new InvalidOperationException(
+                    "Assembly-CSharp 里找不到 VersionControl 类型（候选：" +
+                    string.Join(" | ", KnownTypeNames.Get(KnownTypeNames.VersionControl).FullNames) +
+                    "），也没有简单名为 VersionControl 的类型");
 
             var s = Prop(t, "CurrentVersionString") as string;
             var s2 = Prop(t, "CurrentVersionStringWithoutBuild") as string;
@@ -82,7 +95,8 @@ public static class EngineVersionProbe
             if (string.IsNullOrEmpty(s) || string.IsNullOrEmpty(s2) || v is null)
                 throw new InvalidOperationException($"VersionControl 属性读取为 null（{s ?? "null"} / {s2 ?? "null"} / {v?.ToString() ?? "null"}）");
 
-            return new EngineVersionInfo(s, s2, v, EngineVersionInfo.ReflectionSource, null);
+            return new EngineVersionInfo(s, s2, v, EngineVersionInfo.ReflectionSource, null,
+                resolvedFullName ?? t.FullName);
         }
         catch (Exception ex)
         {

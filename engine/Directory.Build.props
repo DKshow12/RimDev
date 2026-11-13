@@ -1,6 +1,13 @@
 <Project>
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <!--
+      ★ 第 3 期 Task 9：双目标产物。
+        · net8.0  → 给 1.6（Unity / net472 托管程序集，net8 可反射载入）
+        · net10.0 → 给 1.7.x 线（Waylith / net10 托管程序集；net8 载入必抛
+                    ReflectionTypeLoadException: Could not load 'System.Runtime, Version=10.0.0.0'）
+      同一套源码、两份产物：三个工程共用这一处声明。
+    -->
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
     <LangVersion>12</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

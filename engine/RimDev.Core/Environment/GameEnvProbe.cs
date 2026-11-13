@@ -6,12 +6,38 @@ public sealed class GameEnvProbeException : Exception
 }
 
 /// <summary>
-/// 探测环世界安装位置。顺序：环境变量 RIMWORLD_DIR → 从工作区向上找 RimWorldWin64.exe
-/// → Steam 注册表 → 常见默认路径。全部失败抛 <see cref="GameEnvProbeException"/>。
+/// 探测环世界安装位置与**布局**。
+///
+/// 顺序：显式根（<c>--game-root</c> / 环境变量 RIMWORLD_DIR）→ 从工作区向上找 → Steam 注册表 → 常见默认路径。
+/// 全部失败抛 <see cref="GameEnvProbeException"/>（CLI 报 RD1001）。
+///
+/// ★★ 布局判据（第 3 期 Task 9）：**只看 Assembly-CSharp.dll 落在哪**，不看 exe 文件名。
+///   · <c>&lt;root&gt;\RimWorldWin64_Data\Managed\Assembly-CSharp.dll</c> 存在 ⇒ <see cref="RimWorldLayout.Classic16"/>，
+///     ManagedDir = 该 Managed 目录；
+///   · 否则 <c>&lt;root&gt;\Assembly-CSharp.dll</c> 存在 ⇒ <see cref="RimWorldLayout.Waylith17"/>，ManagedDir = 游戏根；
+///   · 两者都无 ⇒ 抛 RD1001（**不许退化性地把根目录当 Managed 用**：那会把「环境不满足」伪装成「能跑」）。
+///
+/// ★ 为什么不能用 exe 名（实测，2026-10-24 本机两份 1.7 副本）：
+///   Steam 副本只有 <c>RimWorld.exe</c>；桌面副本 <c>RimWorldWin64.exe</c> 与 <c>RimWorld.exe</c> 都在。
+///   任何「靠文件名」的判据在这两份副本上结论相反。
+///
+/// ★ 「Managed 里应有 108 个 dll」这条基线**已废掉**（原 <c>ExpectedManagedDllCount = 108</c>）：
+///   1.6 有 108 个，1.7.x 线的 Managed 只剩 0–2 个（本机实测 2：`0Harmony.dll` 与 `0Harmony .dll`），
+///   死守 108 会把 1.7 判成环境异常。改为按布局给基线，见 <see cref="ExpectedManagedDllCountFor"/>。
 /// </summary>
 public static class GameEnvProbe
 {
-    public const int ExpectedManagedDllCount = 108;
+    /// <summary>
+    /// 按布局取「Managed 里 dll 数量」的参考基线；<c>null</c> = 该布局**没有**这条基线（不做断言）。
+    /// 1.6 的 108 是第 1/2 期实测值，保留它才能继续抓「Managed 少了一半 dll」这类环境损坏。
+    /// </summary>
+    public static int? ExpectedManagedDllCountFor(RimWorldLayout layout) => layout switch
+    {
+        RimWorldLayout.Classic16 => 108,
+        _ => null,
+    };
+
+    public const string AssemblyCSharpFileName = "Assembly-CSharp.dll";
 
     private static readonly string[] DefaultRoots =
     {
@@ -22,7 +48,45 @@ public static class GameEnvProbe
         @"E:\SteamLibrary\steamapps\common\RimWorld",
     };
 
-    public static GameEnv Discover(string? explicitRoot = null, string? startDir = null)
+    /// <summary>布局判据（纯函数，不触碰注册表/默认路径列表，便于自测直接打表）。</summary>
+    public static RimWorldLayout DetectLayout(string gameRoot)
+    {
+        if (string.IsNullOrWhiteSpace(gameRoot) || !Directory.Exists(gameRoot))
+            return RimWorldLayout.Unknown;
+
+        if (File.Exists(Path.Combine(gameRoot, "RimWorldWin64_Data", "Managed", AssemblyCSharpFileName)))
+            return RimWorldLayout.Classic16;
+
+        if (File.Exists(Path.Combine(gameRoot, AssemblyCSharpFileName)))
+            return RimWorldLayout.Waylith17;
+
+        return RimWorldLayout.Unknown;
+    }
+
+    /// <summary>按布局给 ManagedDir（Unknown 时返回 1.6 形状的路径，仅供报错信息使用）。</summary>
+    public static string ManagedDirFor(string gameRoot, RimWorldLayout layout) => layout switch
+    {
+        RimWorldLayout.Waylith17 => Path.GetFullPath(gameRoot),
+        _ => Path.Combine(Path.GetFullPath(gameRoot), "RimWorldWin64_Data", "Managed"),
+    };
+
+    /// <summary>
+    /// 是不是「游戏根」。判据 = 目录存在 且（有任一已知的启动 exe 或 任一布局的 Assembly-CSharp.dll）。
+    /// 仍然接受 exe 名，但**只用于「这是不是根」**，绝不用它区分布局。
+    /// </summary>
+    public static bool IsGameRoot(string dir)
+    {
+        if (!Directory.Exists(dir)) return false;
+        if (File.Exists(Path.Combine(dir, "RimWorldWin64.exe"))) return true;
+        if (File.Exists(Path.Combine(dir, "RimWorld.exe"))) return true;
+        return DetectLayout(dir) != RimWorldLayout.Unknown;
+    }
+
+    /// <param name="explicitRoot"><c>--game-root</c>（优先级最高；实际来源由调用方另行回显）。</param>
+    /// <param name="startDir">向上找根的起点（缺省 = 当前目录）。</param>
+    /// <param name="explicitWorkshopRoot"><c>--workshop-root</c>（缺省 = 环境变量 RIMWORLD_WORKSHOP_DIR → 按 Steam 布局推导）。</param>
+    public static GameEnv Discover(string? explicitRoot = null, string? startDir = null,
+        string? explicitWorkshopRoot = null)
     {
         var root = explicitRoot
                    ?? System.Environment.GetEnvironmentVariable("RIMWORLD_DIR")
@@ -32,13 +96,10 @@ public static class GameEnvProbe
 
         if (root is null || !IsGameRoot(root))
             throw new GameEnvProbeException(
-                "找不到 RimWorld 游戏根目录。请设置环境变量 RIMWORLD_DIR，或在游戏根目录下运行。");
+                "找不到 RimWorld 游戏根目录。请设置环境变量 RIMWORLD_DIR / 用 --game-root 指定，或在游戏根目录下运行。");
 
-        return FromRoot(root);
+        return FromRoot(root, explicitWorkshopRoot);
     }
-
-    public static bool IsGameRoot(string dir) =>
-        Directory.Exists(dir) && File.Exists(Path.Combine(dir, "RimWorldWin64.exe"));
 
     /// <summary>从 startDir 逐级上溯；工作区是 &lt;游戏根&gt;\Mods，因此上一级即命中。</summary>
     public static string? FindByWalkingUp(string startDir)
@@ -86,10 +147,17 @@ public static class GameEnvProbe
         return null;
     }
 
-    public static GameEnv FromRoot(string gameRoot)
+    public static GameEnv FromRoot(string gameRoot, string? workshopRoot = null)
     {
         gameRoot = Path.GetFullPath(gameRoot);
-        var managed = Path.Combine(gameRoot, "RimWorldWin64_Data", "Managed");
+
+        var layout = DetectLayout(gameRoot);
+        if (layout == RimWorldLayout.Unknown)
+            throw new GameEnvProbeException(
+                "RD1001: 游戏根目录里既没有 RimWorldWin64_Data\\Managed\\Assembly-CSharp.dll（1.6 布局），" +
+                "也没有根目录的 Assembly-CSharp.dll（1.7 布局）。请确认 --game-root / RIMWORLD_DIR 指向游戏根。");
+
+        var managed = ManagedDirFor(gameRoot, layout);
         var data = Path.Combine(gameRoot, "Data");
         var mods = Path.Combine(gameRoot, "Mods");
 
@@ -111,7 +179,7 @@ public static class GameEnvProbe
             ManagedDir: managed,
             ModsDir: mods,
             DataDir: data,
-            WorkshopDir: ResolveWorkshopDir(gameRoot),
+            WorkshopDir: workshopRoot ?? ResolveWorkshopDir(gameRoot),
             ConfigDir: config,
             ModsConfigPath: modsConfigPath,
             PlayerLogPath: Path.Combine(localLow, "Player.log"),
@@ -121,11 +189,16 @@ public static class GameEnvProbe
             TargetVersion: ToMajorMinor(versionSource),
             ManagedDllCount: Directory.Exists(managed)
                 ? Directory.GetFiles(managed, "*.dll").Length
-                : 0);
+                : 0,
+            Layout: layout,
+            AssemblyCSharpPath: Path.Combine(managed, AssemblyCSharpFileName));
     }
 
     private static string ResolveWorkshopDir(string gameRoot)
     {
+        var env = System.Environment.GetEnvironmentVariable("RIMWORLD_WORKSHOP_DIR");
+        if (!string.IsNullOrWhiteSpace(env)) return env;
+
         var steamApps = Directory.GetParent(gameRoot)?.Parent?.FullName; // ...\steamapps
         if (steamApps is not null)
         {

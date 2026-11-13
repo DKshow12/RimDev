@@ -179,7 +179,9 @@ public sealed class ReferenceFieldIndex
 
     public static ReferenceFieldIndex Build(ManagedAssemblyCatalog catalog)
     {
-        var defType = catalog.Find("Verse.Def") ?? catalog.FindBySimpleName("Def");
+        // ★ Task 9：候选回退（Verse.Def → RimWorld.Def），不再写死命名空间。
+        var defType = TypeNameResolver.ResolveType(catalog, KnownTypeNames.Def)
+                      ?? catalog.FindBySimpleName(KnownTypeNames.Def);
         if (defType is null) return new ReferenceFieldIndex(catalog, null);
         var shapes = new Dictionary<Type, TypeShape>();
 

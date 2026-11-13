@@ -884,7 +884,8 @@ public sealed class DefGeneratorModel
     private static List<string> DiscoverGenerators(ManagedAssemblyCatalog catalog)
     {
         var res = new List<string>();
-        var t = catalog.Find("RimWorld.DefGenerator");
+        // ★ Task 9：候选回退（1.6 = Verse.DefGenerator，1.7 = RimWorld.DefGenerator）。
+        var t = TypeNameResolver.ResolveType(catalog, KnownTypeNames.DefGenerator);
         if (t is null) return res;
         foreach (var m in t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly))
         {

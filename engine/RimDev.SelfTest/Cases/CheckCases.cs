@@ -21,23 +21,30 @@ public static class CheckCases
     public static void Run()
     {
         T.Group("check");
+        T.Mark("check init: discover env");
         var env = GameEnvProbe.Discover(startDir: Facts.GameRoot);
         var active = ModCatalog.ReadActiveMods(env.ModsConfigPath);
+        T.Mark("check init: build catalog");
         var cat = ModCatalog.Build(env, env.TargetVersion, active).Catalog;
         var tf = cat.Get("dsh.threatfleet.fragments")!;
 
         // ThreatFleet 自身的文件与 def（只用于"字段名检查能解析出顶层元素"那一条用例）
         var tfFiles = DefScanner.CollectFiles(
             new[] { (tf.PackageId, tf.RootPath, (IReadOnlyList<string>)tf.LoadFolders) });
+        T.Mark($"check init: scan ThreatFleet ({tfFiles.Count} files)");
         var tfScan = DefScanner.Scan(tfFiles);
+        T.Mark($"check init: scanned ThreatFleet ({tfScan.FilesScanned} files / {tfScan.Defs.Count} defs)");
 
         // ★ 索引/defs/files 必须是【全集】（active 作用域实测 1649 文件 / 14480 defs），
         //   只把 TargetModPackageId 当【报告过滤器】——否则 ParentName 指向 Core 基类的 def
         //   会被全部误报成 RD2005（ThreatFleet 自身只有 ~185 个 def，父类大多在 Core/DLC 里）。
         var allFiles = DefScanner.CollectFiles(
             cat.Active.Select(m => (m.PackageId, m.RootPath, (IReadOnlyList<string>)m.LoadFolders)));
+        T.Mark($"check init: scan active ({allFiles.Count} files)");
         var allScan = DefScanner.Scan(allFiles);
+        T.Mark($"check init: scanned active ({allScan.FilesScanned} files / {allScan.Defs.Count} defs)");
         var idx = DefIndex.Build(allScan.Defs);
+        T.Mark("check init: index built");
         var ctx = new CheckContext(idx, allScan.Files, cat, allScan.Defs, tf.PackageId);
         var ctxFull = new CheckContext(idx, allScan.Files, cat, allScan.Defs, null);
 
@@ -50,8 +57,11 @@ public static class CheckCases
         var ctxOfficial = new CheckContext(officialIdx, Array.Empty<DefFileResult>(), cat, officialDefs, null);
 
         // 两条全量运行只做一次，供下面的用例复用
+        T.Mark("check init: CheckRunner ctxFull");
         var diagsFull = CheckRunner.Default().Run(ctxFull);
+        T.Mark($"check init: ctxFull done ({diagsFull.Count} diags)");
         var diagsTf = CheckRunner.Default().Run(ctx);
+        T.Mark($"check init: ctx done ({diagsTf.Count} diags)");
 
         T.Case("★ 防假阳①：active 全集上 RD2004 只有 1 条（同 DefType 真重名），绝不报 1202 条", () =>
         {

@@ -88,6 +88,15 @@ public sealed class ManagedAssemblyCatalog
 
         AssemblyLoadContext.Default.Resolving += (ctx, name) =>
         {
+            // ★★ 第 3 期 Task 9（net8 产物遇上 1.7 安装时的实测教训）：
+            //   1.7.x 的 ManagedDir 是**游戏根**，里面放着整套 .NET 运行时（System.Runtime.dll /
+            //   System.Private.CoreLib.dll …，实测根目录 269 个 dll）。若把这些「框架程序集」也从
+            //   游戏根载入，net8 进程会去载入 net10 的 System.Runtime → 解析链自我递归，
+            //   **整轮卡死**（实测该场景下自测停在 defscan 的某条用例上 >500 s 无输出）。
+            //   框架程序集只能由运行时自己提供，这里一律返回 null。
+            if (ManagedAssemblyCatalog.IsFrameworkAssembly(name.Name))
+                return null;
+
             var path = Path.Combine(managedDir, name.Name + ".dll");
             if (!File.Exists(path))
             {
@@ -130,6 +139,26 @@ public sealed class ManagedAssemblyCatalog
 
         return new ManagedAssemblyCatalog(managedDir, types, resolved, failures,
             sw.ElapsedMilliseconds, loaderWarning);
+    }
+
+    /// <summary>
+    /// 是否是「框架程序集」（必须由运行时自己提供，**绝不能**从游戏目录载入）。
+    ///
+    /// ★ 第 3 期 Task 9 实测：1.7.x 线的 ManagedDir == 游戏根，根目录里有整套 net10 运行时
+    ///   （`System.Runtime.dll` / `System.Private.CoreLib.dll` …）。net8 产物若从那里载入它们，
+    ///   会触发「载入 net10 的 System.Runtime」→ 解析链自我递归 → **整轮卡死**（无异常、无输出）。
+    /// ★ 1.6 侧同样安全：它的 Managed 里确有 net472 的 `System.*` 副本，但 net8 运行时会自动把
+    ///   net472 的框架引用统一到共享框架（facade 机制），返回 null 正是「交给运行时处理」。
+    /// </summary>
+    public static bool IsFrameworkAssembly(string? name)
+    {
+        if (string.IsNullOrEmpty(name)) return true;
+        if (name.Equals("mscorlib", StringComparison.OrdinalIgnoreCase)) return true;
+        if (name.Equals("netstandard", StringComparison.OrdinalIgnoreCase)) return true;
+        if (name.Equals("System.Private.CoreLib", StringComparison.OrdinalIgnoreCase)) return true;
+        if (name.Equals("WindowsBase", StringComparison.OrdinalIgnoreCase)) return true;
+        return name.StartsWith("System.", StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith("Microsoft.", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>按简单名精确查找（不假设命名空间）。命中多个时返回第一个。</summary>

@@ -363,6 +363,11 @@ public static class Phase3Task5bCases
     {
         T.Group("phase3-task5b");
 
+        // ★ 第 3 期 Task 9：本文件的**全部用例**都以「引擎对照台」为准绳，而对照台要载入
+        //   1.6 的托管程序集链（ManagedDir 里的 UnityEngine.CoreModule.dll 等）。
+        //   1.7.x 线没有这些文件（ManagedDir = 游戏根，Unity 已被 Waylith 取代）⇒
+        //   整组按布局**显式 SKIP**（逐条记名），装上 1.6 后必须原样全部回绿。
+        using var layoutScope = T.Scope(LayoutNeed.Classic16);
         // ── Step 5 的前置钉子：探针必须可用 ─────────────────────────────────────
         T.Case("★ (0) 引擎对照台必须可用（不可用即 FAIL，绝不静默跳过）", () =>
         {

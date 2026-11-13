@@ -1,0 +1,24 @@
+{
+  "_comment": [
+    "RimDev 版本切换 profile（第 3 期 Task 9）。",
+    "profile 里存的是【安装路径】，不是【用哪个 exe】—— 产物由 <gameRoot> 的布局现场推出：",
+    "  <gameRoot>\\RimWorldWin64_Data\\Managed\\Assembly-CSharp.dll 存在 ⇒ Classic16 ⇒ engine\\RimDev.Cli\\bin\\Debug\\net8.0\\rimdev.exe",
+    "  否则 <gameRoot>\\Assembly-CSharp.dll 存在                     ⇒ Waylith17 ⇒ engine\\RimDev.Cli\\bin\\Debug\\net10.0\\rimdev.exe",
+    "用法：rimdev --profile 1.6 env / rimdev profile list / rimdev profile use 1.7",
+    "优先级：命令行 --profile > 环境变量 RIMDEV_PROFILE > 本文件 default。",
+    "路径可用环境变量覆盖：RIMDEV_GAME_ROOT / RIMDEV_WORKSHOP_ROOT。",
+    "★ profile 1.6 的路径留空是【有意的】：本机没有 1.6 安装。留空时 --profile 1.6 会给出明确提示并退出码 4，",
+    "  不会静默回落到 1.7。装上 1.6 后把 gameRoot 填进来即可（旧版本可能是 RimWorldWin64_Data\\Managed 布局）。"
+  ],
+  "default": "1.7",
+  "profiles": {
+    "1.7": {
+      "gameRoot": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\RimWorld",
+      "workshopRoot": "C:\\Program Files (x86)\\Steam\\steamapps\\workshop\\content\\294100"
+    },
+    "1.6": {
+      "gameRoot": "",
+      "workshopRoot": ""
+    }
+  }
+}

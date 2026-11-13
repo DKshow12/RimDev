@@ -7,6 +7,10 @@ public sealed class CheckRunner
     private readonly List<ICheck> _checks = new();
     public CheckRunner Add(ICheck check) { _checks.Add(check); return this; }
 
+    /// <summary>★ 排障开关：`RIMDEV_CHECK_TRACE=1` 时逐条规则打开始/耗时到 stderr（默认关闭，不产生任何输出）。</summary>
+    private static readonly bool _trace =
+        System.Environment.GetEnvironmentVariable("RIMDEV_CHECK_TRACE") == "1";
+
     /// <summary>
     /// 已注册的规则（只读）。
     /// ★ 存在意义：`check --json` 要把 <see cref="PatchCheck"/> **自己算出来的**补丁层统计报出去
@@ -52,6 +56,10 @@ public sealed class CheckRunner
         foreach (var c in _checks)
         {
             var t = System.Diagnostics.Stopwatch.StartNew();
+            // ★ 排障用（默认关闭）：`RIMDEV_CHECK_TRACE=1` 时逐条规则打开始/耗时到 stderr。
+            //   存在理由：某条规则**挂起**时，`run` 不返回、也没有任何输出，只看诊断结果无从归因。
+            var trace = _trace;
+            if (trace) Console.Error.WriteLine($"[check] {c.Id} start");
             try { all.AddRange(c.Run(ctx)); }
             catch (Exception ex)
             {
@@ -59,6 +67,7 @@ public sealed class CheckRunner
                     $"规则 {c.Id} 自身抛异常：{ex.GetType().Name}: {ex.Message}"));
             }
             t.Stop();
+            if (trace) Console.Error.WriteLine($"[check] {c.Id} done {t.ElapsedMilliseconds} ms");
             timings.Add((c.Id, t.ElapsedMilliseconds));
         }
         LastCheckMs = timings;

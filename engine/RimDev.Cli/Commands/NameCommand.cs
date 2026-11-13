@@ -125,7 +125,15 @@ public static class NameCommand
         }
         else
         {
-            Console.WriteLine((verdict.Exists ? "✓ 存在  " : "✗ 不存在 ") + d.Message);
+            // ★ Task 23b：三态而不是两态。
+            //   旧写法 Exists ? "✓ 存在" : "✗ 不存在" 把「没查」也说成了「不存在」。
+            //   用户看到「✗ 不存在 Def 名 Gun_Revolver …需要 Def 索引」
+            //   会以为 Gun_Revolver 真的没有（它存在）。
+            //   判据：RD4007 （DefNameIndexRequired）= 未查，不是不存在。
+            var prefix = verdict.Exists ? "✓ 存在  "
+                : d.Code == Codes.DefNameIndexRequired ? "… 未查  "
+                : "✗ 不存在 ";
+            Console.WriteLine(prefix + d.Message);
             if (d.Hint is not null) Console.WriteLine("  提示: " + d.Hint);
             if (d.Suggestions is { Count: > 0 })
             {

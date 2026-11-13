@@ -229,10 +229,20 @@ public sealed class NameOracle
             TypeName: name, MemberName: name, Suggestions: suggestions), NameKind.DefName, false);
     }
 
-    /// <summary>Def 名查证需要 v2 的 Def 索引，v1 明确不做，且必须如实说明而不是猜。</summary>
+    /// <summary>
+    /// Def 名查证**不带 <c>--index</c>** 时的回答。
+    ///
+    /// <para>★ Task 23（全量验证时发现）：原文案写「属 v2 范围」，
+    /// 但它**已经实现了** —— 只要加 <c>--index</c>。用户看到「未实现」
+    /// 会直接放弃，根本不会去试那个开关。这是文案与现实脱节。</para>
+    ///
+    /// <para>同时换掉错码：原用 <c>RD4006</c>（MetadataUnavailable）—— 那个码的语义是
+    /// 「元数据引擎不可用」，而这里元数据好好的，只是没给引擎而已。</para>
+    /// </summary>
     private static NameVerdict NotImplementedDefName(string name) =>
-        new(new Diagnostic(Codes.MetadataUnavailable, Severity.Warning, Scope.Offline,
-            $"Def 名 {name} 的存在性检查尚未实现（需要 Def 索引，属 v2 范围）",
-            "v1 已支持 --kind type|field|property|method|enum；Def 名请先用 rimsearcher list --type <DefType>",
+        new(new Diagnostic(Codes.DefNameIndexRequired, Severity.Info, Scope.Offline,
+            $"Def 名 {name} 的存在性检查需要 Def 索引（默认不建，避免每次查名字都扫全库）",
+            "加 `--index` 就能查（需先跑过 `rimdev index`）；"
+            + "也可用 `--kind type|field|property|method|enum` 查程序集名字",
             TypeName: name, MemberName: name), NameKind.DefName, false);
 }

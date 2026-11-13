@@ -23,6 +23,19 @@ if (args.Contains("--task5c-cases"))
     Phase3Task5cCases.Run();
     return T.Report();
 }
+// ★ 第 3 期 Task 6：按需入口 `rimdev-selftest --task6-probe`（只打印引用字段空间的口径自算与原始观测，
+//   不进常规跑；与 `--task5b-probe` / `--task4-measure` 同一先例）。
+// ★ 第 3 期 Task 6：按需入口 `rimdev-selftest --task6-cases`（只跑本 Task 的用例，供复审时单独复跑）。
+if (args.Contains("--task6-cases"))
+{
+    Phase3Task6Cases.Run();
+    return T.Report();
+}
+
+if (args.Contains("--task6-probe"))
+{
+    return Phase3Task6Cases.RunProbe();
+}
 
 EnvCases.Run();
 MetadataCases.Run();
@@ -62,5 +75,8 @@ Phase3Task5aCases.Run();
 Phase3Task5bCases.Run();
 // ★ 第 3 期 Task 5c：FieldNameCheck 的归属键（同一物理行多 def 时各校验自己的子元素）
 Phase3Task5cCases.Run();
+
+// ★ 第 3 期 Task 6：引用解析（RD3001）+ SimulatedDefSet / ReferenceFieldIndex
+Phase3Task6Cases.Run();
 
 return T.Report();

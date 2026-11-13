@@ -22,6 +22,17 @@ public sealed class ManagedAssemblyCatalog
 {
     private readonly Dictionary<string, List<Type>> _bySimpleName = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// ★★ 第 3 期 Task 6 实测：**引擎对 def 元素名 → C# 类型是大小写不敏感的** ——
+    ///   官方 6 包里既有 6 处小写容器（`&lt;jobDef&gt;`，例如 `Core\Defs\JobDefs\Jobs_Misc.xml:467` 的 `TriggerObject`），
+    ///   也有 384 处 `&lt;JobDef ...&gt;`；游戏两条都能加载。
+    ///   而本类原先只按 `StringComparer.Ordinal` 建表 ⇒ `ResolveXmlTypeName("jobDef")` 返回 null
+    ///   ⇒ def 集与 DefIndex 的键退化成原始大小写 `jobDef` ⇒ 引用侧按 `JobDef` 查不到
+    ///   ⇒ 官方内容上 8 条 RD3001 假阳（TriggerObject×4 / Radiotalking / Floordrawing / Workwatching / Lessontaking）。
+    ///   本表**只作兜底**（精确名优先），不改变既有精确匹配的歧义取舍。
+    /// </summary>
+    private readonly Dictionary<string, Type> _bySimpleNameIgnoreCase = new(StringComparer.OrdinalIgnoreCase);
+
     // ★ 第 3 期 Task 2b：全名精确表。`Find()` 的「取最后一段当简单名」兜底对
     //   `VEF.Abilities.AbilityDef` 这类【带命名空间的元素名】是灾难：它兜底命中 RimWorld.AbilityDef，
     //   于是拿 VEF 自定义类型里写的字段去查原版类型的字段表 → 全库 17623 条 RD4001 假阳。
@@ -48,6 +59,9 @@ public sealed class ManagedAssemblyCatalog
             if (!_bySimpleName.TryGetValue(name, out var list))
                 _bySimpleName[name] = list = new List<Type>();
             list.Add(t);
+
+            // ★ 大小写不敏感兜底表：与类型枚举顺序一致（TryAdd 取先到者），保证确定性。
+            _bySimpleNameIgnoreCase.TryAdd(name, t);
 
             // ★ 第 3 期 Task 2b：另建一张【全名】精确表（重名/嵌套情形由 TryAdd 取先到者，
             //   与 _bySimpleName 的「取第一个」语义一致）。
@@ -150,6 +164,10 @@ public sealed class ManagedAssemblyCatalog
     public Type? FindExactFullName(string fullName) =>
         _byFullName.TryGetValue(fullName, out var t) ? t : null;
 
+    /// <summary>大小写不敏感的简单名查找（**仅作兜底**，不参与含 `.` 的路径）。</summary>
+    public Type? FindBySimpleNameIgnoreCase(string simpleName) =>
+        _bySimpleNameIgnoreCase.TryGetValue(simpleName, out var t) ? t : null;
+
     /// <summary>
     /// ★★ 第 3 期 Task 2b 的**唯一**入口：解析 XML 里的类型名（def 元素名 或 Class= 属性）。
     ///
@@ -157,12 +175,18 @@ public sealed class ManagedAssemblyCatalog
     /// <list type="bullet">
     /// <item>名字含 `.`（看起来是完整类型名 / 带命名空间）→ <b>只认全名精确匹配</b>，
     ///   解析不到就返回 null（调用方报 RD2017 info），<b>绝不</b>退化到简单名。</item>
-    /// <item>名字不含 `.`（`ThingDef` / `HediffDef` 这类原版元素名）→ 走 <see cref="Find"/> 的既有逻辑。
-    ///   这条路径必须保留：它是抓真缺陷（如 <c>ThingDef</c> 上写 <c>renderNodeProperties</c>）的能力所在。</item>
+    /// <item>名字不含 `.`（`ThingDef` / `HediffDef` 这类原版元素名）→ 先走 <see cref="Find"/> 的既有精确逻辑；
+    ///   精确名未命中时再走**大小写不敏感兜底**（Task 6 实测：引擎口径就是大小写不敏感，
+    ///   官方内容里有 `&lt;jobDef&gt;` 的小写容器）。这条兜底只在精确名查不到时才生效，
+    ///   因此不会改变 `ThingDef` 这类既有精确命中的行为，也不影响抓真缺陷的能力。</item>
     /// </list>
     /// </summary>
-    public Type? ResolveXmlTypeName(string typeName) =>
-        typeName.Contains('.') ? FindExactFullName(typeName) : Find(typeName);
+    public Type? ResolveXmlTypeName(string typeName)
+    {
+        if (typeName.Contains('.'))
+            return FindExactFullName(typeName);
+        return Find(typeName) ?? FindBySimpleNameIgnoreCase(typeName);
+    }
 
     public MemberInfoIndex MembersOf(Type type) =>
         _memberCache.TryGetValue(type.FullName ?? type.Name, out var idx)

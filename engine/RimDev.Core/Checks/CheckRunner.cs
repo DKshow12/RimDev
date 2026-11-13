@@ -34,7 +34,11 @@ public sealed class CheckRunner
             //   放最后：它要自己建一遍「合并后的统一 XML」DOM（引擎时序：补丁在继承解析之前），
             //   与前面几条只吃 RawDef 头的规则没有共享计算，放哪里都不影响结果。
             //   求值范围 = 扫描集合 ∩ 启用集合（理由见 PatchCheck 类注释）。
-            .Add(new PatchCheck());
+            .Add(new PatchCheck())
+            // ★ 第 3 期 Task 6：引用解析（RD3001）。放最后 —— 它要自己流式读一遍全部 def 文件
+            //   （在**同一次**读取里同时产出 def 归属与引用值），并建一次有效 def 集合
+            //   （SimulatedDefSet，来源是 Task 5b 的 InheritanceLayer）。
+            .Add(new ReferenceCheck());
     }
 
     public IReadOnlyList<Diagnostic> Run(CheckContext ctx, Func<Diagnostic, bool>? filter = null)

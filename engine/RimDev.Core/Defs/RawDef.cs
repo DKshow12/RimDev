@@ -39,7 +39,23 @@ public sealed record RawDef(
     //   加在末尾且可选 = 向后兼容：既有位置参数构造不受影响；
     //   索引缓存（DefIndexStore）已同步落盘该字段并把 schemaVersion 升到 4（缺失会让走缓存的消费方
     //   拿到 null，从而静默丢掉本 Task 的修复 —— 正是本项目反复踩到的「不报错、只是答案错」）。
-    string? ModRoot = null)
+    string? ModRoot = null,
+
+
+    // ★ 第 3 期 Task 5a：`MayRequireAnyOf="A,B"`（**逗号分隔**，值是 packageId 列表）。
+    //
+    //   为什么必须捕获：引擎 `XmlInheritance.TryRegister` 在注册父节点前先过 `MayRequire*`，
+    //   **不满足就跳过注册** ⇒ 那个 `Name=` 在引擎的父节点表里**根本不存在**；静态分析不建模它，
+    //   就会把「引用一个被 MayRequire 挡掉的父类」判成可解析（漏报）。
+    //   ★ 两个属性的语义**不同**（反编译逐行实证，不要按直觉写成同一个）：
+    //     · `MayRequire`      = `ModLister.AllModsActiveNoSuffix(value.Split(','))` → **每一项都要**命中（**与**）；
+    //     · `MayRequireAnyOf` = `ModLister.AnyFromListActive(value.Split(','))`    → **任一项**命中即可（**或**）。
+    //   判定集合 = **已启用（Active）** 的 packageId（`GetActiveModWithIdentifier` 逐条要求 `item.Active`），
+    //   **不是「已安装」**；后缀归一（`_steam`）见 `InheritanceLayer.NormalizeActiveModIds` 的注。
+    //
+    //   加在末尾且可选 = 向后兼容：既有位置参数构造不受影响；索引缓存（DefIndexStore）已同步落盘该字段
+    //   并把 schemaVersion 升到 5（缺失会让走缓存的消费方拿到 null，静默丢掉本 Task 的行为）。
+    string? MayRequireAnyOf = null)
 {
     /// <summary>
     /// ★ 字段规则应当作用到的类型名：<c>Class=</c> 优先，其次元素名。

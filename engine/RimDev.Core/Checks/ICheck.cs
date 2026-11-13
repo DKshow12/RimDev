@@ -28,7 +28,16 @@ public sealed record CheckContext(
     //               遮蔽胜者判定键 (modLoadOrder, folderIndex) 用的就是它。
     //   两者为 null 时 ShadowingCheck 会退化为「按目录表顺序」，而不是静默失效。
     LoadOrder? LoadOrder = null,
-    IReadOnlyDictionary<string, int>? ModRank = null);
+    IReadOnlyDictionary<string, int>? ModRank = null,
+
+    // ★ 第 3 期 Task 5a 追加（同样加在末尾且可空 = 向后兼容）：
+    //   ActivePackageIds = 【已启用】的 packageId 全集（小写）。`MayRequire*` 的判据是
+    //   `ModLister.GetActiveModWithIdentifier`，硬条件是 `item.Active` ⇒ 是 **Active 而不是 All**。
+    //   ★ `Docs\01` §5.1.5 写的「判定集合 = 已安装的 packageId 全集（不是 activeMods）」
+    //     已被反编译实证**否定**（见 `InheritanceLayer` 类注释里的 `AllModsActiveNoSuffix` 原文）。
+    //   ★ 必须由调用方显式给：`check --only-official` 会让 `Catalog` 变窄，而「本机启用了什么」
+    //     与本次扫描范围无关。为 null 时 InheritanceLayer 回落到 `Catalog.Active`。
+    IReadOnlySet<string>? ActivePackageIds = null);
 
 public interface ICheck
 {

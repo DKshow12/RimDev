@@ -159,6 +159,29 @@ public static class Codes
     ///   evidence 的 <c>reason</c> 区分 <c>customClass</c> / <c>missingClass</c>。
     /// </summary>
     public const string CustomPatchClass = "RD2014";
+
+    /// <summary>
+    /// ❹ 第 3 期 Task 5a：节点带 `MayRequire` / `MayRequireAnyOf`，但指定的 mod **未安装** ⇒ 引擎
+    ///   `XmlInheritance.TryRegister` 会**跳过该节点**（它不会被建成 def、它的 `Name=` 也不会进父节点表）。
+    ///   本规则逐节点报 **info**（不是 modulator 的错，也不是工具的能力边界，而是「这个节点在本机不存在」）。
+    ///
+    /// ★★ 码表冲突（已由主理人裁决）：`01` §7 里 **`RD2008` 与 `RD2016` 是同一个事件的两个码**。
+    ///   因此只新建并使用本码；`RD2016` 保留码号占位但在 `01` §7 那一行注明
+    ///   「与 RD2008 同一事件，已合并，不再发射」——**两个码都不得再用于别的语义**。
+    ///
+    /// 零级语义（引擎侧，反编译**逐行**；`Docs\01` §5.1.5 那段旧说法已被证伪，以本条为准）：
+    ///   `XmlInheritance.TryRegister` 里 `MayRequire` 走
+    ///   `ModLister.AllModsActiveNoSuffix(value.Split(','))` —— 列表里**每一项都**要
+    ///   `GetActiveModWithIdentifier(x.Trim(), ignorePostfix: true) != null`（**与**）；
+    ///   `MayRequireAnyOf` 走 `ModLister.AnyFromListActive(...)`（**或**）。两个属性之间也是「与」。
+    ///   判定集合 = **已启用（Active）** 的 mod —— `TryAddMod` 会把未启用的 mod 也放进
+    ///   两张 packageId 表，但查询时逐条要求 `item.Active`。**不是「已安装」。**
+    ///
+    /// ★ 方向必须写清（任务书 Step 4 要求的实测确认）：跳过节点会让静态分析**多报** RD2005 ——
+    ///   因为一个「本可解析的父类」（其实带着未满足的 MayRequire）会被当成不存在。这**不是**假阳：
+    ///   引擎里那个父类确实不存在，我们与引擎对齐。
+    /// </summary>
+    public const string MayRequireModMissing = "RD2008";
 }
 
 // ===== 第 3 期 Task 2 =====

@@ -34,4 +34,7 @@ if (args.Contains("--task4b-measure"))
     Phase3Task4bCases.RunMeasurement();
     return 0;
 }
+// ★ 第 3 期 Task 5a：InheritanceLayer（ParentName 解析口径 + ResolutionBasis + 补丁字面量 + RD2008）
+Phase3Task5aCases.Run();
+
 return T.Report();

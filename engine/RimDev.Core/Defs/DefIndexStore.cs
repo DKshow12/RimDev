@@ -32,7 +32,9 @@ public sealed class DefIndexStore
     ///   「同 mod 内重复」报出来（全库实测 3,878 条假 error）。**同一纪律：升级版本号拒掉旧缓存，
     ///   不靠「缺字段就当 null」默默接受**（后者正是「不报错、只是答案错」那一类）。
     /// </summary>
-    public const int CurrentSchemaVersion = 4;
+    //   ★ schema 5（第 3 期 Task 5a）：`RawDef.MayRequireAnyOf`。理由同 3/4 —— 消费方依赖它做
+    //   「被 MayRequire* 挡掉的父类不算存在」，不升版本就会拿旧缓存静默漏报。
+    public const int CurrentSchemaVersion = 5;
 
     /// <summary>
     /// 缓存目录的【单一真源】。
@@ -101,7 +103,10 @@ public sealed class DefIndexStore
                     // ★ schema 4（Task 4b）：安装根。**必须落盘**：不落盘的话，任何从缓存读 def 的消费方
                     //   拿到的 ModRoot 都是 null，InstallReplicaCollapse 会静默退化成「不折叠」——
                     //   即「缓存路径上修复不生效」这种最难发现的错。
-                    mr = d.ModRoot
+                    mr = d.ModRoot,
+                    // ★ schema 5（Task 5a）：`MayRequireAnyOf`。与 schema 3/4 同理 —— 不落盘的话，走缓存的
+                    //   消费方拿到 null，InheritanceLayer 会把「被 MayRequireAnyOf 挡掉的父类」当成存在（静默漏报）。
+                    mo = d.MayRequireAnyOf
                 }, Json));
             }
         }
@@ -159,7 +164,9 @@ public sealed class DefIndexStore
                 //   这里用 TryGetProperty 只是不让读环路径自杀）。
                 ClassAttr: r.TryGetProperty("c", out var cEl) ? cEl.GetString() : null,
                 // ★ schema 4（Task 4b）：安装根（同 ClassAttr，可选项只为不让读环路径自杀）。
-                ModRoot: r.TryGetProperty("mr", out var mrEl) ? mrEl.GetString() : null));
+                ModRoot: r.TryGetProperty("mr", out var mrEl) ? mrEl.GetString() : null,
+                // ★ schema 5（Task 5a）：MayRequireAnyOf（同 ClassAttr/ModRoot，可选项只为不让读环路径自杀）。
+                MayRequireAnyOf: r.TryGetProperty("mo", out var moEl) ? moEl.GetString() : null));
         }
         return list;
     }

@@ -131,6 +131,11 @@ public static class DefScanner
                         var nameAttr = reader.GetAttribute("Name");
                         var parentName = reader.GetAttribute("ParentName");
                         var mayRequire = reader.GetAttribute("MayRequire");
+                        // ★ 第 3 期 Task 5a：`MayRequireAnyOf="a b"`（空格分隔）。
+                        //   引擎对两个属性走同一套 `FulfillsModList` 判定，任一命中即算满足；
+                        //   不满足则 `XmlInheritance.TryRegister` **跳过注册** → 它的 `Name=` 在父节点表里不存在。
+                        //   静态分析必须建模它，否则会把「引用被 MayRequire 挡掉的父类」判成可解析。
+                        var mayRequireAnyOf = reader.GetAttribute("MayRequireAnyOf");
                         // ★ 第 3 期 Task 2b：def 元素上的 Class= 属性 —— RimWorld 是按它实例化的，
                         //   字段规则必须优先用它（照元素名查会造出成万条假阳，实测 RD4001 里
                         //   Def|PointCost 1467 / ThingDef|ammoClass 2439 都属这一类）。
@@ -144,6 +149,7 @@ public static class DefScanner
                             NameAttr: string.IsNullOrWhiteSpace(nameAttr) ? null : nameAttr,
                             ParentName: string.IsNullOrWhiteSpace(parentName) ? null : parentName,
                             MayRequire: string.IsNullOrWhiteSpace(mayRequire) ? null : mayRequire,
+                            MayRequireAnyOf: string.IsNullOrWhiteSpace(mayRequireAnyOf) ? null : mayRequireAnyOf,
                             IsAbstract: pendingAbstract,           // Emit 时再按 Name=/defName 复合判断
                             ModPackageId: modPackageId,
                             FileAbs: fileAbs,

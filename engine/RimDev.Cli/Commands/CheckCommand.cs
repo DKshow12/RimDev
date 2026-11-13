@@ -122,7 +122,11 @@ public static class CheckCommand
         var scan = DefScanner.Scan(files);
         var idx = DefIndex.Build(scan.Defs);
         var ctx = new CheckContext(idx, scan.Files, cat, scan.Defs, targetFilter,
-            LoadOrder: loadOrder, ModRank: loadOrder.RankFor(mods));
+            LoadOrder: loadOrder, ModRank: loadOrder.RankFor(mods),
+            // ★ Task 5a：`MayRequire` 的判据是**已启用**的 packageId（反编译实证：引擎走
+            //   `ModLister.GetActiveModWithIdentifier`，硬条件是 `item.Active`）。取 `active` 而不是
+            //   `mods`：`--only-official` / `--scope all` 只改**扫描**集合，与「本机启用了什么」无关。
+            ActivePackageIds: new HashSet<string>(active.Select(p => p.Trim().ToLowerInvariant()), StringComparer.Ordinal));
 
         // ★ 第 3 期 Task 4：把 runner 持有住 —— 补丁层的实测统计要从 PatchCheck 自己身上读，
         //   不能在 CLI 里重算一遍（两套口径必然分叉）。
@@ -138,6 +142,11 @@ public static class CheckCommand
         var patchCheck = runner.Checks.OfType<PatchCheck>().FirstOrDefault();
         // ★ Task 4b：跨安装副本折叠统计的唯一来源（同上，不许 CLI 重算）。
         var shadowCheck = runner.Checks.OfType<ShadowingCheck>().FirstOrDefault();
+        // ★ Task 5a：父名解析统计块的唯一来源 —— 从 ParentChainCheck 自己身上读（它就是从
+        //   InheritanceLayer 拿的），**CLI 绝不重算一遍**（同 Task 4/4b 的理由）。
+        //   null = 该规则没跑（ctx.Defs 为空）。
+        var parentCheck = runner.Checks.OfType<ParentChainCheck>().FirstOrDefault();
+        var parentStats = parentCheck?.LastAnalysis;
         sw.Stop();
 
         var summary = new
@@ -199,6 +208,36 @@ public static class CheckCommand
                          + "跨安装目录但相对路径相同、安装根不同的声明不再计作「同 mod 内重复」（RD2026）。"
                          + "本折叠只改报告口径，不改扫描集合。"
                 },
+                // ★ Task 5a：`ParentName` 解析统计。**恒存在**（解析层没跑则各数为 0，
+                //   且 `ran=false`）—— 字段缺失会让消费方分不出「0 条未解析」与「根本没解析」。
+                //   数字全部来自 ParentChainCheck.LastAnalysis（单一口径，CLI 不重算）。
+                //   口径：每条**带 ParentName、且引擎会加载**的声明（`Evaluated`）按其**直接**父名的
+                //   依据分桶一次 ⇒ `withParentName == skippedByMayRequire + 四数之和`。
+                //   ★ 被 `MayRequire*` 挡掉的声明引擎**连 def 都不建**（第 3 期 Task 5a IL 实证），
+                //     所以它既不进四桶、也不发 RD2005 —— 旧口径把全库 902 条这类声明算成了 error。
+                parentResolution = new
+                {
+                    ran = parentStats is not null,
+                    withParentName = parentStats?.WithParentName ?? 0,
+                    skippedByMayRequire = parentStats?.SkippedByMayRequire ?? 0,
+                    nameSpace = parentStats?.NameSpace ?? 0,
+                    viaPatchLiteral = parentStats?.ViaPatchLiteral ?? 0,
+                    defNameFallback = parentStats?.DefNameFallback ?? 0,
+                    unresolved = parentStats?.Unresolved ?? 0,
+                    chainBroken = parentStats?.ChainBroken ?? 0,
+                    // ★ Task 5a：区分「字面 Name 空间里本来就没有」与「有候选但被 MayRequire* 挡掉」。
+                    //   少了这两个数，`--scope all` 的 RD2005 会比「497 − 96 = 401」多出一大批而无法归因。
+                    nameSpaceBlockedByMayRequire = parentStats?.NameSpaceBlockedByMayRequire ?? 0,
+                    unresolvedMayRequireBlocked = parentStats?.UnresolvedMayRequireBlocked ?? 0,
+                    patchNameLiterals = parentStats?.PatchNameLiterals.Count ?? 0,
+                    patchLiteralAdditions = parentStats?.PatchLiteralAdditions.Count ?? 0,
+                    patchFilesScanned = parentStats?.PatchFilesScanned ?? 0,
+                    patchScanElapsedMs = parentStats?.PatchScanElapsedMs ?? 0,
+                    note = "依据枚举 = NameSpace | NameSpaceViaPatchLiteral | DefNameFallback | Unresolved；"
+                         + "四桶只统计 Evaluated（引擎会加载）的声明：withParentName == skippedByMayRequire + 四数之和。"
+                         + "RD2005 == unresolved + chainBroken（再减去成环的，环发 RD2006）。"
+                         + "补丁字面量集是【有意的过近似】：只取字面量、不评估 XPath，方向是少报。"
+                },
                 summary,
                 elapsedMs = sw.ElapsedMilliseconds,
                 peakWorkingSetMb = Math.Round(
@@ -249,6 +288,17 @@ public static class CheckCommand
                               + $"（{replicas.InstallReplicaPackages?.Count ?? 0} 个 packageId："
                               + string.Join(", ", replicas.InstallReplicaPackages ?? (IReadOnlyList<string>)Array.Empty<string>())
                               + "）—— 同一 packageId 的多份安装提供相同相对路径，不作为「同 mod 内重复」报告");
+        // ★ Task 5a：父名解析依据的可见性（防「静默无依据」）。
+        //   不写这一行，使用者就分不清「RD2005 只有 401 条」是「解析准」还是「解析层没跑」。
+        //   数字一律来自 ParentChainCheck.LastAnalysis（单一口径）。
+        Console.WriteLine(parentStats is { } pr
+            ? $"父名解析        withParent={pr.WithParentName}（其中引擎不加载 {pr.SkippedByMayRequire} 条）"
+              + $" nameSpace={pr.NameSpace} viaPatchLiteral={pr.ViaPatchLiteral} defNameFallback={pr.DefNameFallback}"
+              + $" unresolved={pr.Unresolved} chainBroken={pr.ChainBroken}（RD2005 = 两者之和减环；其中 {pr.UnresolvedMayRequireBlocked} 条是"
+              + $"父名有候选却被 MayRequire* 挡掉，Name 空间被挡候选共 {pr.NameSpaceBlockedByMayRequire} 条）"
+              + $"  补丁字面量 {pr.PatchNameLiterals.Count} 个 distinct / {pr.PatchLiteralAdditions.Count} 处"
+              + $"（扫过 {pr.PatchFilesScanned} 个补丁文件，{pr.PatchScanElapsedMs} ms）"
+            : "父名解析        未运行（ctx.Defs 为空）");
         Console.WriteLine($"耗时            {sw.ElapsedMilliseconds} ms   峰值工作集 "
                           + $"{Math.Round(System.Diagnostics.Process.GetCurrentProcess().PeakWorkingSet64 / 1048576.0, 1)} MB");
         Console.WriteLine();

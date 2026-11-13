@@ -28,6 +28,22 @@ public sealed class GameEnvProbeException : Exception
 public static class GameEnvProbe
 {
     /// <summary>
+    /// ★★ 第 3 期 Task 9b：**环境解析的唯一来源（ambient）**。
+    ///
+    /// CLI 层把全局选项（<c>--game-root</c> / <c>--workshop-root</c>）解析一次、构造出 <see cref="GameEnv"/>，
+    /// 然后 <see cref="SetResolved"/> 设在这里；此后**所有**调用点（包括 Core 内部那些历史遗留的
+    /// <c>GameEnvProbe.Discover()</c>）拿到的都是同一份 —— 这正是「开关被静默忽略、命令照常分析自动探测到的那份安装」
+    /// 那类缺陷的封堵点。
+    ///
+    /// 为什么不靠「每个命令自己把参数传下来」：Core 的检查器（FieldNameCheck / ReferenceCheck /
+    /// LoadFolderCheck）也各自 <c>Discover()</c> 一次，任何一处漏传就又是一次静默错答。
+    /// </summary>
+    public static GameEnv? Resolved { get; private set; }
+
+    /// <summary>设置/清除 ambient 解析结果（<c>null</c> = 回到现场探测；自测靠它做可重入的还原）。</summary>
+    public static void SetResolved(GameEnv? env) => Resolved = env;
+
+    /// <summary>
     /// 按布局取「Managed 里 dll 数量」的参考基线；<c>null</c> = 该布局**没有**这条基线（不做断言）。
     /// 1.6 的 108 是第 1/2 期实测值，保留它才能继续抓「Managed 少了一半 dll」这类环境损坏。
     /// </summary>
@@ -88,6 +104,25 @@ public static class GameEnvProbe
     public static GameEnv Discover(string? explicitRoot = null, string? startDir = null,
         string? explicitWorkshopRoot = null)
     {
+        // ★★ 第 3 期 Task 9b：**ambient 唯一来源优先**。
+        //   CLI 把关卡解析一次后 SetResolved(...)，此后所有调用点（含 Core 内部）都拿到同一份。
+        if (Resolved is { } ambient) return ambient;
+
+        // ★★ 显式给了根就**必须是有效安装**：不许静默回落到自动探测。
+        //   旧行为：`--game-root C:\__no_such__` 时这里回落成「从 cwd 向上找」，于是命令照常
+        //   分析**自动探测到的那份安装**并给出完全正常的输出 —— 用户无法从输出里看出「我扫的不是我指定的那份」。
+        if (explicitRoot is not null)
+        {
+            if (!Directory.Exists(explicitRoot))
+                throw new GameEnvProbeException(
+                    $"--game-root 指定的路径不存在或不是目录：{explicitRoot}（不会回落到自动探测；请修正路径或去掉该开关）");
+
+            if (!IsGameRoot(explicitRoot))
+                throw new GameEnvProbeException(
+                    $"--game-root 指定的目录不是有效的环世界安装：{explicitRoot}"
+                    + $"（既没有 RimWorldWin64_Data\\Managed\\{AssemblyCSharpFileName}，也没有根目录的 {AssemblyCSharpFileName}）");
+        }
+
         var root = explicitRoot
                    ?? System.Environment.GetEnvironmentVariable("RIMWORLD_DIR")
                    ?? FindByWalkingUp(startDir ?? Directory.GetCurrentDirectory())
@@ -150,6 +185,18 @@ public static class GameEnvProbe
     public static GameEnv FromRoot(string gameRoot, string? workshopRoot = null)
     {
         gameRoot = Path.GetFullPath(gameRoot);
+
+        // ★★ 第 3 期 Task 9b：`--workshop-root` 也必须在**解析期**校验。
+        //   旧行为：它只被 env 回显、其余命令连读都不读；即便读了也不校验 —— 指到不存在的目录时
+        //   工坊扫描会静默变成「0 个工坊 mod」，而输出看起来和「没传」一模一样。
+        if (workshopRoot is not null)
+        {
+            if (!Directory.Exists(workshopRoot))
+                throw new GameEnvProbeException(
+                    $"--workshop-root 指定的路径不存在或不是目录：{workshopRoot}（不会回落到自动探测；请修正路径或去掉该开关）");
+
+            workshopRoot = Path.GetFullPath(workshopRoot);
+        }
 
         var layout = DetectLayout(gameRoot);
         if (layout == RimWorldLayout.Unknown)

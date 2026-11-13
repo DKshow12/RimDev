@@ -17,8 +17,9 @@ namespace RimDev.Cli.Commands;
 /// </summary>
 public static class FilesCommand
 {
-    public static int Run(string[] args)
+    public static int Run(EnvironmentResolution cli)
     {
+        var args = cli.Args;
         var json = args.Contains("--json");
         var scopeArg = Option(args, "--scope")?.ToLowerInvariant();
         bool scopeAll;
@@ -40,9 +41,8 @@ public static class FilesCommand
             return 3;
         }
 
-        GameEnv env;
-        try { env = GameEnvProbe.Discover(); }
-        catch (GameEnvProbeException ex) { Console.Error.WriteLine("RD1001: " + ex.Message); return 4; }
+        // ★★ 9b：环境**只有一个来源**（EnvironmentResolution）：不再自己 GameEnvProbe.Discover()。
+        if (!cli.TryGetEnv(out var env)) return EnvironmentResolution.EnvExitCode;
 
         var active = ModCatalog.ReadActiveMods(env.ModsConfigPath);
         var cat = ModCatalog.Build(env, env.TargetVersion, active).Catalog;

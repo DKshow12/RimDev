@@ -8,8 +8,9 @@ namespace RimDev.Cli.Commands;
 
 public static class IndexCommand
 {
-    public static int Run(string[] args)
+    public static int Run(EnvironmentResolution cli)
     {
+        var args = cli.Args;
         // rimdev index [--scope active|all] [--rebuild] [--no-workshop] [--cache <dir>] [--json]
         var scope = Option(args, "--scope")?.ToLowerInvariant() switch
         {
@@ -20,9 +21,8 @@ public static class IndexCommand
         var noWorkshop = args.Contains("--no-workshop");
         var json = args.Contains("--json");
 
-        GameEnv env;
-        try { env = GameEnvProbe.Discover(); }
-        catch (GameEnvProbeException ex) { Console.Error.WriteLine("RD1001: " + ex.Message); return 4; }
+        // ★★ 9b：环境**只有一个来源**（EnvironmentResolution）：不再自己 GameEnvProbe.Discover()。
+        if (!cli.TryGetEnv(out var env)) return EnvironmentResolution.EnvExitCode;
 
         // ★ 单一真源（预检修正 ④）：缓存目录只在 DefIndexStore.DefaultCacheDir 里定义一次，
         //   索引命令与消费方（check / name --index）都调它 —— 各写一遍必然再次分叉。

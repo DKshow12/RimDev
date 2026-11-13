@@ -43,6 +43,13 @@ if (args.Contains("--task5c-cases"))
     Phase3Task5cCases.Run();
     return T.Report();
 }
+// ★ 第 3 期 Task 9b：按需入口 `rimdev-selftest --task9b-cases`（只跑本 Task 的用例，十几秒 ——
+//   其中 check/sim 各一次真扫描；与 `--task5b-cases` / `--task6-cases` 同一先例）。
+if (args.Contains("--task9b-cases"))
+{
+    Phase3Task9bCases.Run();
+    return T.Report();
+}
 // ★ 第 3 期 Task 6：按需入口 `rimdev-selftest --task6-probe`（只打印引用字段空间的口径自算与原始观测，
 //   不进常规跑；与 `--task5b-probe` / `--task4-measure` 同一先例）。
 // ★ 第 3 期 Task 6：按需入口 `rimdev-selftest --task6-cases`（只跑本 Task 的用例，供复审时单独复跑）。
@@ -102,5 +109,10 @@ T.RunFile("phase3-task5c", Phase3Task5cCases.Run);
 
 // ★ 第 3 期 Task 6：引用解析（RD3001）+ SimulatedDefSet / ReferenceFieldIndex
 T.RunFile("phase3-task6", Phase3Task6Cases.Run);
+
+// ★ 第 3 期 Task 9b：**全局环境开关的贯通性**（`--game-root` / `--workshop-root` 不只被 env 采纳）。
+//   ★★ 判别性：对每条扫描/查询命令断言「不存在的根 ⇒ RD1001 + 退出码 4 且不产出结果」——
+//   修前这五条全部照常输出扫描结果、一个错都不报，所以这些用例在旧实现上必然红。
+T.RunFile("phase3-task9b", Phase3Task9bCases.Run);
 
 return T.Report();

@@ -9,8 +9,9 @@ public static class NameCommand
 {
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
-    public static int Run(string[] args)
+    public static int Run(EnvironmentResolution cli)
     {
+        var args = cli.Args;
         // rimdev name check <name> [--kind type|field|property|method|enum|def] [--owner <Type>] [--json]
         if (args.Length < 3 || args[1] != "check")
         {
@@ -23,10 +24,14 @@ public static class NameCommand
         var owner = Option(args, "--owner");
         var json = args.Contains("--json");
 
+        // ★★ 9b：先取环境（RD1001 + 退出码 4），再载入程序集。
+        //   旧实现的 Discover() 在 `--game-root` 无效时会静默回落到自动探测，或被 catch(Exception) 吞成 RD4002。
+        if (!cli.TryGetEnv(out var env)) return EnvironmentResolution.EnvExitCode;
+
         ManagedAssemblyCatalog cat;
         try
         {
-            cat = ManagedAssemblyCatalog.Load(GameEnvProbe.Discover().ManagedDir);
+            cat = ManagedAssemblyCatalog.Load(env.ManagedDir);
         }
         catch (Exception ex)
         {
@@ -40,12 +45,12 @@ public static class NameCommand
         {
             try
             {
-                var env2 = GameEnvProbe.Discover();
+                // ★ 9b：与上面同一个环境对象（旧实现这里又 Discover() 了一次 —— 第二处现场探测）。
                 // ★ 预检修正 ④：缓存目录只有一个真源（DefIndexStore.DefaultCacheDir）。
                 //   不要在这里重写 Path.Combine(Path.GetDirectoryName(env2.ModsDir), ...) ——
                 //   那个公式拼出的是 <游戏根>\_rimdev\cache，既不是缓存实际位置、也在工作区之外。
                 var store = new RimDev.Core.Defs.DefIndexStore(
-                    RimDev.Core.Defs.DefIndexStore.DefaultCacheDir(env2));
+                    RimDev.Core.Defs.DefIndexStore.DefaultCacheDir(env));
                 // ★ 预检修正 ⑤：schema 不符或 meta 不可读时报 RD1004 并【当作没有索引】，不静默用旧缓存作答。
                 var meta = store.Exists() ? store.LoadMeta() : null;
                 if (meta is null || meta.SchemaVersion != RimDev.Core.Defs.DefIndexStore.CurrentSchemaVersion)

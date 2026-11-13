@@ -5,36 +5,25 @@ namespace RimDev.Cli.Commands;
 
 public static class EnvCommand
 {
-    public static int Run(string[] args)
+    public static int Run(EnvironmentResolution cli)
     {
+        var args = cli.Args;
         var json = args.Contains("--json");
-        var gameRoot = ValueOf(args, "--game-root");
-        var workshopRoot = ValueOf(args, "--workshop-root");
+        // ★ 第 3 期 Task 9b：`--game-root` / `--workshop-root` / profile 名一律来自**同一份**解析结果
+        //   （旧实现只有 env 读前两个，其余命令静默忽略；现在没有任何命令自己扫 argv）。
         // ★ 第 3 期 Task 9：切换入口（_rimdev\rimdev.cmd）转发过来的「我现在在哪一边」。
-        var profileFromShim = ValueOf(args, "--rimdev-profile");
-        var invokedVia = ValueOf(args, "--rimdev-invoked-via") ?? "direct";
+        var profileFromShim = cli.Options.Profile;
+        var invokedVia = cli.Options.InvokedVia ?? "direct";
         // 生效 profile 名：shim 转发的名字 > 环境变量 RIMDEV_PROFILE > "(default)"。
         var envProfile = System.Environment.GetEnvironmentVariable("RIMDEV_PROFILE");
         var effectiveProfile = profileFromShim
                                ?? (string.IsNullOrWhiteSpace(envProfile) ? "(default)" : envProfile);
 
-        GameEnv env;
-        try
-        {
-            env = GameEnvProbe.Discover(explicitRoot: gameRoot, explicitWorkshopRoot: workshopRoot);
-        }
-        catch (GameEnvProbeException ex)
-        {
-            Console.Error.WriteLine("RD1001: " + ex.Message);
-            return 4;
-        }
-
-        var envSourceGameRoot = gameRoot is not null ? "--game-root"
-            : !string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("RIMWORLD_DIR")) ? "RIMWORLD_DIR"
-            : "auto";
-        var envSourceWorkshop = workshopRoot is not null ? "--workshop-root"
-            : !string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("RIMWORLD_WORKSHOP_DIR")) ? "RIMWORLD_WORKSHOP_DIR"
-            : "auto";
+        // ★★ 环境**只有一个来源**：任何命令都不许自己再 GameEnvProbe.Discover()（那正是开关被丢掉的入口）。
+        if (!cli.TryGetEnv(out var env)) return EnvironmentResolution.EnvExitCode;
+        // ★ 来源回显的唯一来源：EnvironmentResolution（同一个 Options 决定「用哪份安装」与「显示哪个来源」）。
+        var envSourceGameRoot = cli.GameRootSource;
+        var envSourceWorkshop = cli.WorkshopRootSource;
 
         var identity = env.Identity();
         var typeResolution = ResolveTypes(env);
@@ -154,17 +143,6 @@ public static class EnvCommand
     }
 
     private static string Trim(string s) => s.Length <= 160 ? s : s[..160] + "…";
-
-    /// <summary>取 <c>--flag value</c> 的值；也支持 <c>--flag=value</c>。</summary>
-    private static string? ValueOf(string[] args, string flag)
-    {
-        for (var i = 0; i < args.Length; i++)
-        {
-            if (args[i].StartsWith(flag + "=", StringComparison.Ordinal))
-                return args[i][(flag.Length + 1)..];
-            if (args[i] == flag && i + 1 < args.Length && !args[i + 1].StartsWith("--", StringComparison.Ordinal))
-                return args[i + 1];
-        }
-        return null;
-    }
+    // ★ 9b：原 `ValueOf(args, "--game-root")` 已删除 —— 全局开关的解析只在 GlobalOptions.Parse
+    //   里发生一次。留着它等于给「再扫一遍 argv」留一个入口（那正是本缺陷的成因）。
 }

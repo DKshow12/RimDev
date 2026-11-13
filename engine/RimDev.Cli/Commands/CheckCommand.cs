@@ -36,8 +36,9 @@ public static class CheckCommand
     //   RimDev.Core/Checks/CheckScope.cs —— 放在 Core 是为了让自测**不必引用 CLI 工程**
     //   就能钉住「`--all` 等价于 `--scope active`」。本类只保留一层转发（见下方三个转发函数）。
 
-    public static int Run(string[] args)
+    public static int Run(EnvironmentResolution cli)
     {
+        var args = cli.Args;
         // rimdev check [<mod>] [--scope target|active|all] [--all] [--only-official] [--severity ...] [--json]
         if (args.Contains("--help") || args.Contains("-h") || args.Contains("--?"))
         {
@@ -70,10 +71,9 @@ public static class CheckCommand
         }
         var json = args.Contains("--json");
 
-        GameEnv env;
-        try { env = GameEnvProbe.Discover(); }
-        catch (GameEnvProbeException ex) { Console.Error.WriteLine("RD1001: " + ex.Message); return 4; }
-
+        // ★★ 9b：环境**只有一个来源**（EnvironmentResolution）。这里不再 GameEnvProbe.Discover() ——
+        //   那是「--game-root / --workshop-root 被静默忽略」的入口（旧实现就是把它们丢掉、照常自动探测）。
+        if (!cli.TryGetEnv(out var env)) return EnvironmentResolution.EnvExitCode;
         var active = ModCatalog.ReadActiveMods(env.ModsConfigPath);
         var cat = ModCatalog.Build(env, env.TargetVersion, active).Catalog;
 

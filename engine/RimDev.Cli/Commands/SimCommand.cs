@@ -31,8 +31,9 @@ namespace RimDev.Cli.Commands;
 /// </summary>
 public static class SimCommand
 {
-    public static int Run(string[] args)
+    public static int Run(EnvironmentResolution cli)
     {
+        var args = cli.Args;
         if (args.Contains("--help") || args.Contains("-h") || args.Contains("--?"))
         {
             PrintHelp();
@@ -61,9 +62,8 @@ public static class SimCommand
         // ★ Task 8 Step 1：整跑墙钟（含枚举 / 解析 / 三条规则 / 输出）——分阶段归因用。
         var swAll = System.Diagnostics.Stopwatch.StartNew();
 
-        GameEnv env;
-        try { env = GameEnvProbe.Discover(); }
-        catch (GameEnvProbeException ex) { Console.Error.WriteLine("RD1001: " + ex.Message); return 4; }
+        // ★★ 9b：环境**只有一个来源**（EnvironmentResolution）：不再自己 GameEnvProbe.Discover()。
+        if (!cli.TryGetEnv(out var env)) return EnvironmentResolution.EnvExitCode;
 
         var active = ModCatalog.ReadActiveMods(env.ModsConfigPath);
         var cat = ModCatalog.Build(env, env.TargetVersion, active).Catalog;

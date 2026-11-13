@@ -9,8 +9,9 @@ public static class ApiCommand
 {
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
-    public static int Run(string[] args)
+    public static int Run(EnvironmentResolution cli)
     {
+        var args = cli.Args;
         // rimdev api <probe|type|member|ctor|list> <TypeName> [--member <name>] [--filter <sub>] [--json]
         if (args.Length < 2)
         {
@@ -30,10 +31,15 @@ public static class ApiCommand
             return 3;
         }
 
+        // ★★ 9b：先取环境（RD1001 + 退出码 4），再载入程序集。
+        //   旧实现直接 Discover()：`--game-root` 指向不存在的路径时它静默回落到自动探测，
+        //   或者抛 GameEnvProbeException 被下面的 catch(Exception) 吞成 RD4002 —— 两条都不是 RD1001 语义。
+        if (!cli.TryGetEnv(out var env)) return EnvironmentResolution.EnvExitCode;
+
         ManagedAssemblyCatalog cat;
         try
         {
-            cat = ManagedAssemblyCatalog.Load(GameEnvProbe.Discover().ManagedDir);
+            cat = ManagedAssemblyCatalog.Load(env.ManagedDir);
         }
         catch (Exception ex)
         {

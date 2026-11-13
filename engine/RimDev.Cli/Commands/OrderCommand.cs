@@ -21,8 +21,9 @@ namespace RimDev.Cli.Commands;
 /// </summary>
 public static class OrderCommand
 {
-    public static int Run(string[] args)
+    public static int Run(EnvironmentResolution cli)
     {
+        var args = cli.Args;
         if (args.Contains("--help") || args.Contains("-h") || args.Contains("--?"))
         {
             PrintHelp();
@@ -32,9 +33,8 @@ public static class OrderCommand
         var json = args.Contains("--json");
         var explain = args.Contains("--explain");
 
-        GameEnv env;
-        try { env = GameEnvProbe.Discover(); }
-        catch (GameEnvProbeException ex) { Console.Error.WriteLine("RD1001: " + ex.Message); return 4; }
+        // ★★ 9b：环境**只有一个来源**（EnvironmentResolution）：不再自己 GameEnvProbe.Discover()。
+        if (!cli.TryGetEnv(out var env)) return EnvironmentResolution.EnvExitCode;
 
         var activeIds = ModCatalog.ReadActiveMods(env.ModsConfigPath);
         var expansions = LoadOrder.ReadKnownExpansions(env.ModsConfigPath);

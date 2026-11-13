@@ -6,5 +6,13 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\RimDev.Core\RimDev.Core.csproj" />
+    <!--
+      ★ 第 3 期 Task 9b：自测**直接引用 CLI 工程**，通过公开入口
+        `RimDev.Cli.CommandLine.Run(args, stdout, stderr)` 断言「每条命令 + 环境开关」的行为。
+        · 不起子进程：子进程会引入路径/引号/cwd/超时这类与被测行为无关的失败模式，
+          而且拿不到「有没有产出扫描结果」的精确判据（只能 grep 文本）。
+        · 引用 Exe 工程是合法的（CLI 的顶层 Program 只做一行转发，真正逻辑在 CommandLine 里）。
+    -->
+    <ProjectReference Include="..\RimDev.Cli\RimDev.Cli.csproj" />
   </ItemGroup>
 </Project>

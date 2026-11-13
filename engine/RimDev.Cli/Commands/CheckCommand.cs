@@ -275,6 +275,12 @@ public static class CheckCommand
         Console.WriteLine($"扫描            {mods.Count} 个 mod / {files.Count} 个 XML / {idx.TotalDefs} 个 def"
                           + (targetFilter is not null ? "   （全集扫描；报告按目标过滤）" : ""));
         Console.WriteLine($"结果            error {summary.error}   warning {summary.warning}   info {summary.info}");
+        // ★ Task 11：被降级的 RD3001（引用方 mod 未启用 ⇒ info）单独可见。
+        //   没这一行，使用者只能看到 error 数和 info 数同时变大，分不清哪些是「未启用 mod 的噪音」、哪些是「真缺陷」。
+        var downgradedRd3001 = diags.Count(d => d.Code == Codes.DefNameNotFound && d.Severity == Severity.Info);
+        if (downgradedRd3001 > 0)
+            Console.WriteLine($"引用降级        RD3001 中 {downgradedRd3001} 条是「引用方 mod 未启用」" 
+                              + $"，已降为 info（不影响当前游戏；启用前需先补齐前置）");
         // ★ Task 4：RD2009/RD2014 的求值范围（默认 scope=active 时两者等价，`--scope all` 时不同）
         // ★ Task 4：RD2009/RD2014 的求值范围与【实测】规模 —— 数字来自补丁层自己，不是 CLI 另算的。
         //   没有这一行，「RD2009 = 0」就分不清是「没打空」还是「根本没求值」。

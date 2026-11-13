@@ -52,6 +52,12 @@ if (args.Contains("--task9b-cases"))
 }
 // ★ 第 3 期 Task 9c：按需入口 `rimdev-selftest --task9c-cases`（只跑本 Task 的用例，约十秒 ——
 //   其中 index/files/check×2/sim 各一次真扫描）。
+if (args.Contains("--task11-cases"))
+{
+    // ★ 独立入口：跳过其他组（它们在 641 mod 语料下要跑很久），只跑 task11 的判别性用例。
+    T.RunFile("phase3-task11", Phase3Task11Cases.Run);
+    return T.Report();
+}
 if (args.Contains("--task9c-cases"))
 {
     Phase3Task9cCases.Run();
@@ -126,5 +132,7 @@ T.RunFile("phase3-task9b", Phase3Task9bCases.Run);
 //   ★★ 判别性：8 条命令 + 拼错的开关 ⇒ 退出码 3 且**不产出结果**；另一半断言同一批命令带真实开关仍然正常。
 //   修前这 8 条全部照常输出扫描结果、一个错都不报，所以前一半用例在旧实现上必然红。
 T.RunFile("phase3-task9c", Phase3Task9cCases.Run);
+// ★ 第 3 期 Task 11：引用方 mod 未启用 ⇒ RD3001 降级为 info（全库 3971 条里 3256 条是这类假阳）
+T.RunFile("phase3-task11", Phase3Task11Cases.Run);
 
 return T.Report();

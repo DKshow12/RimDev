@@ -36,6 +36,14 @@ public sealed record ReferenceStats(
     int ParityFailures,
     /// <summary>★ Task 6b Step 3：Abstract="True" 等「引擎从不实例化」的声明数（其引用不求值）。</summary>
     int AbstractDeclarationsSkipped,
+    /// <summary>★ Task 11：引用方 mod 不在启用集、因而降级为 info 的 RD3001 条数。</summary>
+    /// <remarks>
+    /// 与 <see cref="MissingInScope"/> 的关系：MissingInScope = 本字段 + 仍然 error 的条数。
+    /// 单独计数是必须的 —— 否则「全库 3971 → 启用集 1」这类变化读者只看到总数变小、不知为何。
+    /// 口径：判据是 def.ModPackageId（引用方）是否在 ActivePackageIds 里，**大小写不敏感**
+    /// （ActivePackageIds 由 NormalizeActiveModIds 产出，全小写；RawDef.ModPackageId 保留原大小写）。
+    /// </remarks>
+    int NotEnabledReporter,
     long ElapsedMs,
     IReadOnlyList<string>? CustomLoaderSamples = null)
 {
@@ -45,7 +53,9 @@ public sealed record ReferenceStats(
         + $"抽象槽 {ResolvedViaAssignableTypes}，悬空 {MissingInScope}）"
         + $" / 边界：自定义 loader 子树 {CustomLoaderSubtreesSkipped}，未知字段元素 {UnknownFieldElements}，"
         + $"抽象无 Class= {AbstractElementWithoutClass} / Class= 派发 命中 {ClassDispatchHits} 未命中 {ClassDispatchMisses} 类型不匹配 {ClassTypeMismatch}"
-        + $" / 归属键不一致文件 {ParityFailures}";
+        + $" / 归属键不一致文件 {ParityFailures}"
+        // 只在非 0 时追加：默认输出（--scope active）不该多一行「降级 0」的噪音。
+        + (NotEnabledReporter > 0 ? $" / 未启用引用方降级 {NotEnabledReporter}" : "");
 }
 
 /// <summary>
@@ -157,6 +167,8 @@ public sealed class ReferenceCheck : ICheck
         public long ChildFrameTicks, DispatchTicks, DiagTicks, LoaderProbeTicks;
         /// <summary>★ Task 8 Step 2：靠运行期生成名命中的引用点（覆盖面锁的一项）。</summary>
         public int GeneratedHits;
+        /// <summary>★ Task 11：引用方 mod 未启用、RD3001 被降级为 info 的条数。</summary>
+        public int NotEnabledReporter;
         /// <summary>边界 1（自定义 loader）的**前若干条定位** —— 「每一项可定位到 文件:行」是 sim 的验收要求。</summary>
         public readonly List<string> CustomSamples = new();
     }
@@ -215,6 +227,9 @@ public sealed class ReferenceCheck : ICheck
         var tSet = System.Diagnostics.Stopwatch.StartNew();
         var set = SimulatedDefSet.Build(ctx, analysis, catalog);
         tSet.Stop();
+        // ★ Task 11：启用集（小写集合，已剥 _steam 后缀）—— 与 MayRequire* 判定用的是**同一份真源**，
+        //   不另算一遍，避免两处口径漂移。
+        var activeIds = analysis.ActivePackageIds;
         // ★ Task 8 Step 3：文件之间**互相独立**（各自持有 frames 栈与 assignableMemo，set 只读），
         //   所以按文件并行。可见输出由「结果按文件下标回放」保证：诊断顺序、CustomSamples 取样顺序
         //   都与串行逐条一致 —— 并行只改「谁在什么时候算」，不改任何输出。
@@ -325,8 +340,10 @@ public sealed class ReferenceCheck : ICheck
                                         // ★ Task 8 Step 1：单条候选判定的时间片（含 Contains/Assignable/Suggest）。
                                         c.DiagCalls++;
                                         var diagTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                                        // activeIds 由 Run 里的 analysis.ActivePackageIds 提供（只读、跨文件安全）；
+                                        // 它是 NormalizeActiveModIds 的产物 —— 已剥 _steam 后缀且全小写。
                                         var diag = BuildDiagnostic(slot, value, f.OwnerType, current, f.StartLine,
-                                            index, set, assignableMemo, c);
+                                            index, set, assignableMemo, c, activeIds);
                                         c.DiagTicks += System.Diagnostics.Stopwatch.GetTimestamp() - diagTicks;
                                         if (diag is null) continue;
                                         if (ctx.TargetModPackageId is not null
@@ -445,6 +462,7 @@ public sealed class ReferenceCheck : ICheck
             ClassTypeMismatch: all.ClassTypeMismatch,
             ParityFailures: all.ParityFailures,
             AbstractDeclarationsSkipped: all.AbstractSkipped,
+            NotEnabledReporter: all.NotEnabledReporter,
             ElapsedMs: sw.ElapsedMilliseconds,
             CustomLoaderSamples: all.CustomSamples);
     }
@@ -670,7 +688,8 @@ public sealed class ReferenceCheck : ICheck
     // ────────────────────────────────────────────────────────────────────────────
 
     private static Diagnostic? BuildDiagnostic(RefSlot slot, string value, string ownerType, RawDef def, int line,
-        ReferenceFieldIndex index, SimulatedDefSet set, Dictionary<Type, IReadOnlyList<string>> memo, Counters c)
+        ReferenceFieldIndex index, SimulatedDefSet set, Dictionary<Type, IReadOnlyList<string>> memo, Counters c,
+        IReadOnlySet<string>? activeIds)
     {
         c.Sites++;
         var target = slot.TargetDefType;
@@ -722,10 +741,38 @@ public sealed class ReferenceCheck : ICheck
         if (alsoKnown.Count > 0)
             hint += $"；这个名字在别的 DefType 下存在：{string.Join(" / ", alsoKnown)}（字段声明的 Def 类型可能不对）";
 
+        // ★ Task 11：**引用方 mod 是否启用**决定这条诊断的严重度。
+        //
+        // 为什么必须区分（实测 `--scope all` 的 3971 条 RD3001）：
+        //   · scope all 扫 4034 个 mod，而本机实际只启用 641 个；
+        //   · 未启用 mod 的悬空引用**不影响当前游戏** —— 它引用的前置多半同样没启用；
+        //   · 把它们报成 error，会让 98% 的输出是噪音，真缺陷（启用集里的那几条）被淹没。
+        //
+        // 但不降级成「不报」：未启用 mod 装坏了本身是有价值的信息（作者/用户可能正要启用它），
+        // 所以保留诊断、只把严重度降到 info，并在 evidence 里写明判据。
+        //
+        // ★ 大小写：ActivePackageIds 由 NormalizeActiveModIds 产出（全小写），
+        //   而 RawDef.ModPackageId 保留原始大小写（如 `VanillaExpanded.VanillaAnimalsExpanded`）。
+        //   不 ToLowerInvariant 会让「已启用」被误判成「未启用」：实测 671 条真缺陷会被错降为 info ——
+        //   假阴比假阳更贵，所以这里必须 lower 后再查。
+        //   （官方 id 是 `Ludeon.RimWorld.Anomaly` 这种大小写，同样依赖这一步才不会误降。）
+        bool reporterEnabled = true;
+        if (activeIds is not null && !string.IsNullOrEmpty(def.ModPackageId))
+            reporterEnabled = activeIds.Contains(def.ModPackageId.Trim().ToLowerInvariant());
+        if (!reporterEnabled) c.NotEnabledReporter++;
+
+        // info 级的 hint 要换一套说法：原文「用 name check 反查」对一个没启用的 mod 是误导。
+        var effectiveHint = reporterEnabled
+            ? hint
+            : hint + "；★ 引用方 mod 【未启用】，该悬空不影响当前游戏（启用它之前需先补齐前置）";
+
         return new Diagnostic(
-            Codes.DefNameNotFound, Severity.Error, Scope.Offline,
-            $"引用悬空：{ownerType}.{slot.FieldName} 指向不存在的 {target.Name} \"{value}\"",
-            hint,
+            Codes.DefNameNotFound,
+            reporterEnabled ? Severity.Error : Severity.Info,
+            Scope.Offline,
+            (reporterEnabled ? "" : "[未启用 mod] ")
+                + $"引用悬空：{ownerType}.{slot.FieldName} 指向不存在的 {target.Name} \"{value}\"",
+            effectiveHint,
             FileAbs: def.FileAbs, Line: line,
             ModPackageId: def.ModPackageId, DefName: def.DefName, DefType: def.DefType,
             Suggestions: suggestions,
@@ -742,6 +789,8 @@ public sealed class ReferenceCheck : ICheck
                 ["nearest"] = string.Join(" ", suggestions),
                 ["sameNameOtherDefTypes"] = string.Join(" ", alsoKnown),
                 ["declarationInScope"] = set.DeclarationCount(target.Name, value).ToString(),
+                ["reporterEnabled"] = reporterEnabled ? "true" : "false",
+                ["reporterPackageId"] = def.ModPackageId ?? "",
             });
     }
 

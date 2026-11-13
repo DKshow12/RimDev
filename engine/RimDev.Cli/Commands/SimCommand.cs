@@ -258,6 +258,9 @@ public static class SimCommand
                         resolvedViaFullNameKey = refs.ResolvedViaFullNameKey,
                         resolvedViaAssignableTypes = refs.ResolvedViaAssignableTypes,
                         danglingReferences = refs.MissingInScope,
+                        // ★ Task 11：引用方 mod 未启用、因而降级为 info 的条数。
+                        //   读者看到 danglingReferences 变小时，靠这一项才能知道差额去了哪里。
+                        danglingReferencesNotEnabledReporter = refs.NotEnabledReporter,
                         // ★ Task 8 Step 2：覆盖面锁的一项 —— 靠运行期生成名命中的引用点数。
                         resolvedByGeneratedName = refs.ResolvedByGeneratedName,
                         reported = refs.Reported,

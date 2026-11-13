@@ -70,7 +70,9 @@ namespace RimDev.Core.Defs;
 /// `UI_Oneshots_Designation.xml` L3 的 `Name=` 与 L19 的 defName 同串）。本层的
 /// <see cref="Walk"/> 因此返回**声明链**而不是名字链，环判定交给消费者在这条链上做。
 /// </summary>
-public sealed class InheritanceLayer
+// ★ 第 3 期 Task 5b：本类改成 partial —— 合并语义（`Merge`/`ResolveNode`）单独放在
+//   `Defs/InheritanceLayer.Merge.cs`，避免对这个 43 KB 文件做大范围编辑（任务书 Step 2 的建议）。
+public sealed partial class InheritanceLayer
 {
     // ────────────────────────────────────────────────────────────────────────────
     // 解析依据

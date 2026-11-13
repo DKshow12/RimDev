@@ -10,6 +10,7 @@ return args[0] switch
 {
     "env" => EnvCommand.Run(args),
     "api" => ApiCommand.Run(args),
+    "name" => NameCommand.Run(args),
     "--version" => PrintVersion(),
     _ => Unknown(args[0])
 };

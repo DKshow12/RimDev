@@ -30,7 +30,7 @@ public static class CommandLine
 
     /// <summary>用法一行（`--help` 与未知命令共用）。</summary>
     public const string Usage =
-        "usage: rimdev <env|api|name|index|check|files|order|sim> [options]（`rimdev check --help` / `rimdev sim --help` 看 scan scope 语义）";
+        "usage: rimdev <env|api|name|index|check|files|order|sim|log> [options]（`rimdev check --help` / `rimdev sim --help` 看 scan scope 语义；`rimdev log --help` 看日志诊断）";
 
     /// <summary>
     /// 唯一入口：解析全局开关 → 构造成唯一的环境解析结果 → 分发。
@@ -138,6 +138,9 @@ public static class CommandLine
             "name" => NameCommand.Run(ctx),
             // ★ 第 3 期 Task 6：加载结果摘要（有效 def / 遮蔽 / 悬空引用 / MayRequire / loader 边界）
             "sim" => SimCommand.Run(ctx),
+            // ★ 第 3 期 Task 15：读 Player.log 做诊断（RD7xxx）。
+            //   不进 needsAssembly 集合 —— 日志分析不需要加载程序集元数据。
+            "log" => LogCommand.Run(ctx, ctx.Args.Skip(1).ToArray()),
             // 不可达（上面已按白名单登记表拦下）：留作兜底，新增命令忘登记时这里会报未知命令而不是编译错。
             _ => Unknown(command)
         };

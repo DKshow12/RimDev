@@ -131,6 +131,7 @@ public static class CommandFlags
         CheckCommand.Flags,
         OrderCommand.Flags,
         SimCommand.Flags,
+        LogCommand.Flags,
     };
 
     /// <summary>全部已登记的命令（自测用来钉「注册表覆盖 Usage」）。</summary>

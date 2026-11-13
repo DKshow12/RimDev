@@ -182,6 +182,63 @@ public static class Codes
     ///   引擎里那个父类确实不存在，我们与引擎对齐。
     /// </summary>
     public const string MayRequireModMissing = "RD2008";
+
+    // ── RD7xxx 日志诊断（★ 第 3 期 Task 15）─────────────────────────
+    //
+    // ★ 码段裁决（Docs/10 §6.1，主理人已拍板）：
+    //   · RD6xxx **已被贴图与素材**占用（RD6001–RD6004、RD6010，见 01 §7 第 931–938 行）
+    //   · 日志诊断在文档里**本来就有专门段** RD7xxx（01 §7 第 940–946 行）
+    //   · 新增码从 **RD7020** 起（RD7014–RD7030 已 grep 确认在文档与代码中全未出现）
+    //
+    // 一个码两种含义 = 项目历史上 RD2008/RD2016 重复的翻版，不能再犯。
+
+    /// <summary>官方文档已定义但本工具**尚未发射**的日志码（RD7001–RD7005）—— 留作占位与对齐。</summary>
+    /// <remarks>实现走 RD7020+：那一段的语义是「一条规则一个码」，与文档的毛粗分类不完全对应。
+    /// 两者并存不冲突：RD7001–RD7005 依旧可用，RD7020+ 是更细的分档。</remarks>
+    public const string LogCrossRefUnresolved = "RD7001";
+
+    /// <summary>★ Task 15：日志里「引用了不存在的 Def」（最高价值的一类）。</summary>
+    /// <remarks>引擎原文：<c>&lt;owner&gt; &lt;slot&gt; is not defined in any loaded mods.</c>
+    /// 与我们的 RD3001（离线预测悬空）形成「离线说会怎样 vs 真机实际怎样」的对账。</remarks>
+    public const string LogMissingDef = "RD7020";
+
+    /// <summary>★ Task 15：XML 字段不属于目标类型（引擎 <c>XML error: … doesn't correspond to any field</c>）。</summary>
+    public const string LogXmlUnknownField = "RD7021";
+
+    /// <summary>★ Task 15：Def 配置错误（引擎 <c>Config error in …</c>）。</summary>
+    public const string LogDefConfigError = "RD7022";
+
+    /// <summary>★ Task 15：跨引用解析失败（引擎 <c>Could not resolve cross-reference</c>）。</summary>
+    public const string LogCrossRefMissing = "RD7023";
+
+    /// <summary>★ Task 15：资源（贴图）找不到。</summary>
+    public const string LogMissingTexture = "RD7024";
+
+    /// <summary>★ Task 15：程序集 / 类型加载失败（常见于游戏升级后旧 DLL 未适配）。</summary>
+    public const string LogAssemblyConflict = "RD7025";
+
+    /// <summary>★ Task 15：空引用异常（单看信息量有限，需结合堆栈）。</summary>
+    public const string LogNullReference = "RD7026";
+
+    /// <summary>★ Task 15：翻译数据有错（不致崩，但影响文本显示）。</summary>
+    public const string LogTranslationError = "RD7027";
+
+    /// <summary>★ Task 15：packageId 格式不规范（影响依赖识别与加载顺序）。</summary>
+    public const string LogPackageIdFormat = "RD7028";
+
+    /// <summary>★ Task 15：补丁作用在过时方法上（Harmony 相关，通常意味着 mod 需要更新）。</summary>
+    public const string LogPatchObsolete = "RD7029";
+
+    /// <summary>★ Task 15b：补丁的 xpath 在真机里匹配 0 个节点。</summary>
+    /// <remarks>与离线 <see cref="PatchXpathNoMatch"/>（RD2009）**完全对应**：
+    /// 一个是我们离线预测「这条补丁会打空」，另一个是引擎真的报了。
+    /// 两者对账是本工具从「离线推测」进到「可验证」的关键一步。</remarks>
+    public const string LogPatchXpathNoMatch = "RD7031";
+
+    /// <summary>★ Task 15：未归类的错误/异常行（保留原文）。</summary>
+    /// <remarks>**不参与「比基线新增」判定** —— 否则游戏版本一变，
+    /// 通用报错全被算成新增缺陷，门禁变成噪音源。</remarks>
+    public const string LogUncategorized = "RD7030";
 }
 
 // ===== 第 3 期 Task 2 =====

@@ -52,6 +52,11 @@ if (args.Contains("--task9b-cases"))
 }
 // ★ 第 3 期 Task 9c：按需入口 `rimdev-selftest --task9c-cases`（只跑本 Task 的用例，约十秒 ——
 //   其中 index/files/check×2/sim 各一次真扫描）。
+if (args.Contains("--task15-cases"))
+{
+    T.RunFile("phase3-task15", Phase3Task15Cases.Run);
+    return T.Report();
+}
 if (args.Contains("--task14-cases"))
 {
     T.RunFile("phase3-task14", Phase3Task14Cases.Run);
@@ -155,5 +160,7 @@ T.RunFile("phase3-task12", Phase3Task12Cases.Run);
 T.RunFile("phase3-task13", Phase3Task13Cases.Run);
 // ★ 第 3 期 Task 14：真实 mod 程序集上的归并端到端验证
 T.RunFile("phase3-task14", Phase3Task14Cases.Run);
+// ★ 第 3 期 Task 15：日志诊断（RD7xxx，从［引擎自己说的话］回推）
+T.RunFile("phase3-task15", Phase3Task15Cases.Run);
 
 return T.Report();

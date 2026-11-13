@@ -229,8 +229,15 @@ public static class GameEnvProbe
             WorkshopDir: workshopRoot ?? ResolveWorkshopDir(gameRoot),
             ConfigDir: config,
             ModsConfigPath: modsConfigPath,
-            PlayerLogPath: Path.Combine(localLow, "Player.log"),
-            PrevPlayerLogPath: Path.Combine(localLow, "Player-prev.log"),
+            // ★ Task 15（Docs/10 §6.2 的裁决）：1.7 的日志在 <c>&lt;localLow&gt;\Logs\</c> 子目录，
+            //   不是 <c>&lt;localLow&gt;\</c> 根目录。本机实测：
+            //     &lt;localLow&gt;\Player.log          → 不存在
+            //     &lt;localLow&gt;\Logs\Player.log     → 2,470,288 B（2026-11-11）1
+            //   旧代码只拼根目录 ⇒ 不带 <c>--path</c> 的日志命令永远报「文件不存在」。
+            //   做**二级回退**：优先根目录（旧版本行为，也许某些环境确实如此），
+            //   不存在则用 <c>Logs\</c> 子目录（不管文件是否存在都拼对那个）。
+            PlayerLogPath: ResolvePlayerLogPath(localLow, "Player.log"),
+            PrevPlayerLogPath: ResolvePlayerLogPath(localLow, "Player-prev.log"),
             VersionRaw: versionRaw,
             VersionConfig: versionConfig,
             TargetVersion: ToMajorMinor(versionSource),
@@ -239,6 +246,23 @@ public static class GameEnvProbe
                 : 0,
             Layout: layout,
             AssemblyCSharpPath: Path.Combine(managed, AssemblyCSharpFileName));
+    }
+
+    /// <summary>
+    /// ★ Task 15：解析 Player.log 路径。
+    /// <para>优先 <c>&lt;localLow&gt;\&lt;file&gt;</c>（旧版行为）；不存在时用
+    /// <c>&lt;localLow&gt;\Logs\&lt;file&gt;</c>（1.7 实测位置）。</para>
+    /// <para>注意：即使两个都不存在，也返回 <c>Logs\</c> 那个 —— 让上层报
+    /// 「文件不存在」时指向最可能的位置，而不是一个已知不对的旧路径。</para>
+    /// </summary>
+    private static string ResolvePlayerLogPath(string localLow, string fileName)
+    {
+        var atRoot = Path.Combine(localLow, fileName);
+        if (File.Exists(atRoot)) return atRoot;
+        var inLogs = Path.Combine(localLow, "Logs", fileName);
+        if (File.Exists(inLogs)) return inLogs;
+        // 两个都不存在：返回新版位置（更可能对）
+        return inLogs;
     }
 
     private static string ResolveWorkshopDir(string gameRoot)

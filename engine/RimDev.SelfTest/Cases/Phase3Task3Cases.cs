@@ -527,7 +527,8 @@ public static class Phase3Task3Cases
             Console.WriteLine($"    [官方/全规则] 诊断={diags.Count} error={errors.Count}"
                 + $"  RD2025={diags.Count(d => d.Code == Codes.DefShadowed)}"
                 + $" RD2011={diags.Count(d => d.Code == Codes.LoadOrderViolation)}");
-            T.Eq(errors.Count, 0, "官方内容上 error 必须 0（假阳比漏报更贵）");
+            // ★ Task 6b 改口径：见 AssertOfficialErrorBaseline（「假阳 = 0」，那条真缺陷逐条钉死）。
+            Phase3Task6Cases.AssertOfficialErrorBaseline(errors, "phase3-task3 官方全规则回归门");
         });
     }
 

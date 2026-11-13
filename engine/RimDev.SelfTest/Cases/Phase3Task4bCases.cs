@@ -349,10 +349,39 @@ public static class Phase3Task4bCases
             Console.WriteLine($"    [h] declarationsDropped={s.InstallReplicaDeclarationsDropped}"
                 + $" packages=[{string.Join(", ", s.InstallReplicaPackages ?? new List<string>())}]");
 
-            T.Eq(s.InstallReplicaDeclarationsDropped, 3878, "被折叠的声明数（任务书期望表：3,878）");
             var pkgs = s.InstallReplicaPackages ?? new List<string>();
-            T.Eq(pkgs.Count, 1, "受影响的 packageId 只有 1 个");
-            T.Eq(pkgs[0], CePackageId, "那个 packageId 就是 CE");
+
+            // ★ 2026-10-16 主理人裁决（`08` §4f.5）：原断言把「本机装了两份 CE」当成**硬前提**，
+            //   而 `3495749827\About\About.xml` 已被改名成 `About.xml.disabled`（与 `2890901044\About.xml`
+            //   逐字节同大小 3717 B）⇒ 它不再是 mod ⇒ 没有副本可折叠。那是一条**环境漂移造成的过期锚点**，
+            //   不是代码回归。修法＝把硬编码数字换成**与独立环境探测绑定的不变式**：
+            //   有无双装由 `ModCatalog` 自己数（不看被裁对象），两条分支都必须成立；
+            //   环境无关的那部分保证仍由上面 (c)/(d)/(e) 的夹具用例覆盖。
+            var probeEnv = GameEnvProbe.Discover(startDir: Facts.GameRoot);
+            var probeCat = ModCatalog.Build(probeEnv, probeEnv.TargetVersion,
+                ModCatalog.ReadActiveMods(probeEnv.ModsConfigPath)).Catalog;
+            var dupGroups = probeCat.All
+                .GroupBy(m => m.PackageId, StringComparer.OrdinalIgnoreCase)
+                .Where(g => g.Select(m => m.RootPath).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1)
+                .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            Console.WriteLine($"    [h] 独立探测：同 packageId 多份安装的组数={dupGroups.Count}"
+                + $" [{string.Join(", ", dupGroups.Select(g => g.Key + "×" + g.Count()))}]");
+
+            if (dupGroups.Count == 0)
+            {
+                T.Eq(s.InstallReplicaDeclarationsDropped, 0,
+                    "本机【没有】同 packageId 多份安装 ⇒ 被折叠声明数必须为 0（非 0 说明折叠把不该裁的也裁了）");
+                T.Eq(pkgs.Count, 0, "本机无双装 ⇒ 受影响 packageId 必须为 0");
+            }
+            else
+            {
+                T.Eq(dupGroups.Count, 1, "同 packageId 多份安装的组数（出现新的一组必须改口径并说明）");
+                T.Eq(dupGroups[0].Key, CePackageId, "那组必须是 CE");
+                T.Eq(s.InstallReplicaDeclarationsDropped, 3878, "CE 双装 ⇒ 被折叠的声明数（任务书期望表：3,878）");
+                T.Eq(pkgs.Count, 1, "受影响 packageId 只有 1 个");
+                T.Eq(pkgs[0], CePackageId, "那个 packageId 就是 CE");
+            }
         });
 
         T.Case("★ (j) 既有不变量按新口径仍然闭合（全库）", () =>

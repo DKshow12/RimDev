@@ -1,3 +1,5 @@
+using System.Reflection;
+using System.Xml;
 using RimDev.Core.Checks;
 using RimDev.Core.Metadata;
 
@@ -49,6 +51,11 @@ public sealed class SimulatedDefSet
     private readonly Dictionary<string, int> _countByTypeAndName = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<string>> _typesByName = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// ★ 第 3 期 Task 6b：引擎**运行期生成 def** 的模型（12 个 `DefGenerator` 入口）。
+    /// null = 没建模（旧行为）；非 null 时 <see cref="Names"/> 已经把生成名并进集合。
+    /// </summary>
+    public DefGeneratorModel? GeneratorModel { get; private set; }
     private SimulatedDefSet() { }
 
     // ── 摘要数字（`rimdev sim` 的「加载结果摘要」从这里取，CLI 不另算一遍）─────────
@@ -72,6 +79,11 @@ public sealed class SimulatedDefSet
     public int UnresolvedTypeDeclarations { get; private init; }
     /// <summary>带 Class= 的声明数（它必须报出来：键取元素名这条口径正是为了它们）。</summary>
     public int ClassAttrDeclarations { get; private init; }
+
+    /// <summary>
+    /// ★ 第 3 期 Task 6b：引擎**运行期生成**、并进本集合的 def 名数（不参与「声明」类计数）。
+    /// </summary>
+    public int GeneratedDefNames { get; private init; }
 
     /// <summary>某个 `(DefType, defName)` 是否存在于有效集合里。</summary>
     public bool Contains(string defType, string defName) =>
@@ -198,7 +210,7 @@ public sealed class SimulatedDefSet
     /// </param>
     /// <param name="catalog">用于把 `ResolvedTypeName` 归一到 CLR 类型名（大小写/全限定名归一）。</param>
     public static SimulatedDefSet Build(CheckContext ctx, InheritanceLayer.Analysis analysis,
-        ManagedAssemblyCatalog catalog)
+        ManagedAssemblyCatalog catalog, bool modelGenerators = true)
     {
         var byType = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         var seenNames = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
@@ -252,11 +264,40 @@ public sealed class SimulatedDefSet
             counts[countKey] = counts.GetValueOrDefault(countKey) + 1;
         }
 
+        // ★ 声明口径的 distinct 计数必须在并生成名**之前**取（生成名不是声明）。
+        var declaredDistinct = byType.Values.Sum(x => x.Count);
+
+        // ★★ 第 3 期 Task 6b：把「引擎运行期生成的 def」并进集合。
+        //   唯一来源 = DefGeneratorModel（12 个生成器入口由 IL 实测得到，规则可证伪）。
+        //   ★ 必须在 byType 上直接并（而不是事后加）——否则排序与长度分桶会与生成名不一致。
+        //   ★ 生成名**不**进 counts（它们不是声明，DeclarationCount 应只数 XML 声明）。
+        DefGeneratorModel? genModel = null;
+        if (modelGenerators)
+        {
+            genModel = DefGeneratorModel.Build(catalog, ctx, analysis, byType);
+            foreach (var (gt, gn) in genModel.Names)
+            {
+                if (!byType.TryGetValue(gt, out var glist))
+                {
+                    byType[gt] = glist = new List<string>();
+                    seenNames[gt] = new HashSet<string>(StringComparer.Ordinal);
+                    // ★ 必须同时建长度分桶：下面排序段用的是 `byTypeLen[type]` 直接索引。
+                    //   漏了这一行 ⇒「某类型只有运行期生成名、没有任何 XML 声明」时抛
+                    //   `KeyNotFoundException: The given key 'TerrainDef' was not present`。
+                    //   官方语料恰好每个生成类型都有 XML 声明，所以只有夹具能抓到它
+                    //   （Task 6b 的 TerrainDef 探针夹具第一次跑就命中了）。
+                    byTypeLen[gt] = new Dictionary<int, List<string>>();
+                }
+                if (seenNames[gt].Add(gn)) glist.Add(gn);
+            }
+        }
+
         // 排序（二分查找 + 建议列表的稳定序）
         foreach (var (type, list) in byType)
         {
             list.Sort(StringComparer.Ordinal);
-            var byLen = byTypeLen[type];
+            if (!byTypeLen.TryGetValue(type, out var byLen))
+                byTypeLen[type] = byLen = new Dictionary<int, List<string>>();
             foreach (var n in list)
             {
                 if (!byLen.TryGetValue(n.Length, out var bucket)) byLen[n.Length] = bucket = new List<string>();
@@ -270,13 +311,15 @@ public sealed class SimulatedDefSet
             AbstractDeclarations = abstractCount,
             SkippedByMayRequire = skipped,
             EffectiveDeclarations = effective,
-            EffectiveDefNames = byType.Values.Sum(x => x.Count),
-            ShadowedDeclarations = effective - byType.Values.Sum(x => x.Count),
+            EffectiveDefNames = declaredDistinct,
+            ShadowedDeclarations = effective - declaredDistinct,
+            GeneratedDefNames = genModel?.Names.Count ?? 0,
             InheritedDefNameDeclarations = inherited,
             UnnamedDeclarations = unnamed,
             UnresolvedTypeDeclarations = unresolvedType,
             ClassAttrDeclarations = ctx.Defs.Count(x => x.ClassAttr is not null),
         };
+        set.GeneratorModel = genModel;
         foreach (var (k, v) in byType) set._byType[k] = v;
         foreach (var (type, names) in byType)
             foreach (var n in names)
@@ -318,5 +361,545 @@ public sealed class SimulatedDefSet
         var full = slotType.FullName;
         if (string.IsNullOrEmpty(full) || full == name) return new[] { name };
         return new[] { name, full };
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// 第 3 期 Task 6b：引擎**运行期生成 def** 的模型
+//
+// 背景（`08` §4f.1）：引擎在 `DefGenerator.GenerateImpliedDefs_PreResolve/PostResolve`
+// 里跑 12 个静态生成器，造出 XML 里**根本不存在**的 def；XML 对它们的引用是合法的。
+// 静态检查不建模这一整块 ⇒ 官方 6 包上 95 条 RD3001 假阳。
+//
+// ★ 为什么是「规则 + IL 证据」而不是「前缀白名单」：
+//   每条规则都声明了它必须能在**对应生成器的 IL 里找到**的字面量/字段引用（`lit:` / `field:`）。
+//   找不到 ⇒ 该规则**被丢弃并计数**（`EvidenceFailures`），而不是照用；
+//   于是「换个引擎版本前缀变了」会**响亮地失败**，而不是静默放行。
+// ★ 每条规则的方向都是**有界**的：名字必须 = 字面量 + **某个真实存在的基底 def** 的 defName，
+//   且基底还要满足该生成器的谓词（如 `Corpse_<X>` 要求 X 是**带 `<race>` 的 ThingDef**）。
+//   所以 `Corpse_Gun`（基底 def 不存在）与「基底存在但不是带 race 的 ThingDef」都**仍会报 RD3001**。
+// ════════════════════════════════════════════════════════════════════════════════
+
+/// <summary>一条生成规则跑完后的**可审计**结果（`sim --json` 的 `generatedDefs.rules`）。</summary>
+public sealed record GeneratedRuleReport(
+    string RuleId,
+    string Generator,
+    string Method,
+    string ProducedDefType,
+    string NameShape,
+    string BaseSpec,
+    bool IlEvidenceOk,
+    string Evidence,
+    int BaseDefsMatched,
+    int BaseBDefsMatched,
+    int NamesGenerated);
+
+/// <summary>
+/// 一次「运行期生成 def」建模的实测统计。
+/// ★ 所有计数都是**实测**（不是「应该有」）：`UnmodeledGenerators` 明确列出**没有规则覆盖**的
+///   生成器入口 —— 防「没建模」被读成「没问题」。
+/// </summary>
+public sealed class DefGeneratorModel
+{
+    public IReadOnlyList<(string DefType, string Name)> Names { get; init; } = Array.Empty<(string, string)>();
+    public IReadOnlyList<GeneratedRuleReport> Rules { get; init; } = Array.Empty<GeneratedRuleReport>();
+    public IReadOnlyList<string> UnmodeledGenerators { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> DiscoveredGenerators { get; init; } = Array.Empty<string>();
+    public int EvidenceFailures { get; init; }
+    public long ElapsedMs { get; init; }
+
+    // ── 规则表（每条的 `Evidence` 都必须在 IL 里找到，见类注释）────────────────────
+    private sealed record BaseReq(string DefType, string Predicate);
+
+    private sealed record Rule(
+        string Id, string GeneratorType, string Method, string ProducedDefType,
+        string[] NameShapes, string[] Evidence, BaseReq A, BaseReq? B);
+
+    private static readonly Rule[] Table =
+    {
+        // 基底谓词 `child:<元素名>` = 该 def 有同名一级子元素；`any` = 只要求基底该 DefType 存在。
+        new("Corpses", "RimWorld.ThingDefGenerator_Corpses", "GenerateCorpseDef", "ThingDef",
+            new[] { "Corpse_{0}" }, new[] { "lit:Corpse_" }, new("ThingDef", "child:race"), null),
+        new("UnnaturalCorpses", "RimWorld.ThingDefGenerator_Corpses", "GenerateUnnaturalCorpseDef", "ThingDef",
+            new[] { "UnnaturalCorpse_{0}" }, new[] { "lit:UnnaturalCorpse_" }, new("ThingDef", "child:race"), null),
+        new("Meat", "RimWorld.ThingDefGenerator_Meat", "GenerateMeatDef", "ThingDef",
+            new[] { "Meat_{0}" }, new[] { "lit:Meat_" }, new("ThingDef", "child:race"), null),
+        new("Neurotrainer", "RimWorld.ThingDefGenerator_Neurotrainer", "ImpliedThingDefs", "ThingDef",
+            new[] { "Neurotrainer_{0}" }, new[] { "lit:_", "field:NeurotrainerDefPrefix" }, new("SkillDef", "any"), null),
+        new("Psytrainer", "RimWorld.ThingDefGenerator_Neurotrainer", "ImpliedThingDefs", "ThingDef",
+            new[] { "Psytrainer_{0}" }, new[] { "lit:_", "field:PsytrainerDefPrefix" }, new("AbilityDef", "any"), null),
+        // ★ 谓词是 **IL 实证**的 `ResearchProjectDef.techprintCount > 0`（不是某个 XML 子元素）：
+        //   `<ImpliedTechprintDefs>d__1.MoveNext` 里 `call get_TechprintCount` → `ldc.i4.0` → `ble.s`（跳过）。
+        //   改前写的是 `child:techprint` —— 那个字段**根本不存在**（`api member` 实测：只有 techprintCount），
+        //   于是该规则恒匹配 0 个基底 ⇒ `Techprint_X` 引用会被假报悬空（一类潜在假阳）。
+        new("Techprints", "RimWorld.ThingDefGenerator_Techprints", "ImpliedTechprintDefs", "ThingDef",
+            new[] { "Techprint_{0}" }, new[] { "lit:Techprint_", "call:ResearchProjectDef.get_TechprintCount" },
+            new("ResearchProjectDef", "intGt:techprintCount:0"), null),
+        new("Blueprint", "RimWorld.ThingDefGenerator_Buildings", "NewBlueprintDef_Thing", "ThingDef",
+            new[] { "Blueprint_{0}" }, new[] { "field:BlueprintDefNamePrefix" },
+            new("ThingDef", "child:designationCategory"), null),
+        new("InstallBlueprint", "RimWorld.ThingDefGenerator_Buildings", "NewBlueprintDef_Thing", "ThingDef",
+            new[] { "Blueprint_Install_{0}" }, new[] { "field:BlueprintDefNamePrefix", "field:InstallBlueprintDefNamePrefix" },
+            new("ThingDef", "child:designationCategory"), null),
+        new("Frame", "RimWorld.ThingDefGenerator_Buildings", "NewFrameDef_Thing", "ThingDef",
+            new[] { "Frame_{0}" }, new[] { "field:BuildingFrameDefNamePrefix" },
+            new("ThingDef", "child:designationCategory"), null),
+        new("Stone", "RimWorld.TerrainDefGenerator_Stone", "ImpliedTerrainDefs", "TerrainDef",
+            new[] { "{0}_Rough", "{0}_RoughHewn", "{0}_Smooth" },
+            new[] { "lit:_Rough", "lit:_RoughHewn", "lit:_Smooth" }, new("ThingDef", "naturalRock"), null),
+        new("Carpet", "RimWorld.TerrainDefGenerator_Carpet", "CarpetFromBlueprint", "TerrainDef",
+            new[] { "{0}{1}" }, new[] { "lit:Structure_" },
+            new("TerrainTemplateDef", "any"), new("ColorDef", "colorType:Structure")),
+        new("Recipe", "RimWorld.RecipeDefGenerator", "CreateRecipeDefFromMaker", "RecipeDef",
+            new[] { "Make_{0}" }, new[] { "lit:Make_", "call:RecipeDefGenerator.CreateRecipeDefFromMaker" },
+            new("ThingDef", "child:recipeMaker"), null),
+        // ★ Bulk 变体（IL：`ldstr "Bulk"` + `String.Concat`，门是 `recipeMaker.bulkRecipeCount > 0`）。
+        //   不建模它，则第三方内容里的 `Make_XBulk` 引用会被假报悬空（官方内容的 Make_*Bulk 全是显式声明，
+        //   所以官方门禁看不见这个洞）。
+        new("RecipeBulk", "RimWorld.RecipeDefGenerator", "CreateRecipeDefFromMaker", "RecipeDef",
+            new[] { "Make_{0}Bulk" }, new[] { "lit:Bulk", "field:bulkRecipeCount" },
+            new("ThingDef", "intGt:recipeMaker.bulkRecipeCount:0"), null),
+        new("Gene", "RimWorld.GeneDefGenerator", "ImpliedGeneDefs", "GeneDef",
+            new[] { "{0}_{1}" }, new[] { "lit:_" }, new("GeneTemplateDef", "any"), new("", "geneSource")),
+    };
+
+    internal static DefGeneratorModel Build(ManagedAssemblyCatalog catalog, CheckContext ctx,
+        InheritanceLayer.Analysis analysis, IReadOnlyDictionary<string, List<string>> declaredNames)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var names = new List<(string, string)>();
+        var reports = new List<GeneratedRuleReport>();
+        var failures = 0;
+
+        // ① IL 实测「生成器清单」：不硬编码，读 `RimWorld.DefGenerator` 两个入口的调用目标。
+        var discovered = DiscoverGenerators(catalog);
+
+        // ② 事实表（XML 一级/二级子元素与少量标量）—— 谓词需要它。
+        var facts = DefGenFactScanner.Scan(ctx, catalog, analysis);
+
+        // ③ 逐条规则：先验 IL 证据，再算名字。
+        foreach (var rule in Table)
+        {
+            var genType = catalog.Find(rule.GeneratorType);
+            if (genType is null)
+            {
+                failures++;
+                reports.Add(new GeneratedRuleReport(rule.Id, rule.GeneratorType, rule.Method, rule.ProducedDefType,
+                    string.Join("|", rule.NameShapes), Describe(rule.A, rule.B), false,
+                    "生成器类型在本程序集里找不到", 0, 0, 0));
+                continue;
+            }
+
+            var (literals, fieldRefs, callRefs) = IlEvidence(genType);
+            var missing = rule.Evidence.Where(e =>
+                e.StartsWith("lit:", StringComparison.Ordinal) ? !literals.Contains(e[4..])
+                : e.StartsWith("call:", StringComparison.Ordinal) ? !callRefs.Contains(e[5..])
+                : !fieldRefs.Contains(e["field:".Length..])).ToList();
+            var ok = missing.Count == 0;
+            if (!ok) failures++;
+
+            var producedKey = TypeKey(catalog, rule.ProducedDefType);
+            var aNames = BaseNames(declaredNames, catalog, rule.A, facts, out var aCount);
+            var bNames = rule.B is null
+                ? new List<string>()
+                : BaseNames(declaredNames, catalog, rule.B, facts, out _);
+            // ★ Gene 的第二基底是「SkillDef ∪ ChemicalDef，按模板类型二选一」，单独算。
+            if (rule.Id == "Gene")
+                bNames = GeneSources(declaredNames, catalog);
+
+            var generated = 0;
+            if (ok)
+            {
+                foreach (var a in aNames)
+                {
+                    // ★ 单基底规则（B == null）用 [""] 占位（格式串只有 {0}）；
+                    //   双基底规则在第二基底为空时**不生成任何名字**（用 a+"" 会造出垃圾名）。
+                    var bs = rule.Id == "Gene"
+                        ? GeneSourcesFor(facts, a, declaredNames, catalog)
+                        : rule.B is null ? new List<string> { "" } : bNames;
+                    foreach (var b in bs)
+                        foreach (var shape in rule.NameShapes)
+                        {
+                            var nm = string.Format(shape, a, rule.Id == "Carpet" ? b.Replace("Structure_", "") : b);
+                            names.Add((producedKey, nm));
+                            generated++;
+                        }
+                }
+            }
+
+            reports.Add(new GeneratedRuleReport(rule.Id, rule.GeneratorType, rule.Method, rule.ProducedDefType,
+                string.Join("|", rule.NameShapes), Describe(rule.A, rule.B), ok,
+                string.Join(" ", rule.Evidence) + (ok ? "" : "  缺失: " + string.Join(",", missing)),
+                aCount, bNames.Count, generated));
+        }
+
+        // ④ 未建模的生成器入口（响亮地报出来，绝不静默）
+        var modeled = new HashSet<string>(Table.Select(r => r.GeneratorType + "::" + r.Method), StringComparer.Ordinal);
+        var unmodeled = discovered.Where(d => !modeled.Contains(d)).ToList();
+
+        sw.Stop();
+        return new DefGeneratorModel
+        {
+            Names = names,
+            Rules = reports,
+            UnmodeledGenerators = unmodeled,
+            DiscoveredGenerators = discovered,
+            EvidenceFailures = failures,
+            ElapsedMs = sw.ElapsedMilliseconds,
+        };
+    }
+
+    /// <summary>Gene 生成的第二基底 = `DefDatabase&lt;SkillDef&gt; ∪ DefDatabase&lt;ChemicalDef&gt;`。</summary>
+    private static List<string> GeneSources(IReadOnlyDictionary<string, List<string>> declared,
+        ManagedAssemblyCatalog catalog)
+    {
+        var res = new List<string>();
+        foreach (var t in new[] { "SkillDef", "ChemicalDef" })
+        {
+            var k = TypeKey(catalog, t);
+            if (declared.TryGetValue(k, out var l)) res.AddRange(l);
+        }
+        return res;
+    }
+
+    /// <summary>按模板的 `geneTemplateType` 选第二基底（Skill 模板配 SkillDef，Chemical 模板配 ChemicalDef）。</summary>
+    private static List<string> GeneSourcesFor(DefGenFacts facts, string template,
+        IReadOnlyDictionary<string, List<string>> declared, ManagedAssemblyCatalog catalog)
+    {
+        var t = facts.GeneKind(template) == "Chemical" ? "ChemicalDef" : "SkillDef";
+        var k = TypeKey(catalog, t);
+        return declared.TryGetValue(k, out var l) ? l : new List<string>();
+    }
+
+    private static string Describe(BaseReq a, BaseReq? b) =>
+        $"{a.DefType}({a.Predicate})" + (b is null ? "" : $" × {b.DefType}({b.Predicate})");
+
+    private static string TypeKey(ManagedAssemblyCatalog catalog, string elementName) =>
+        catalog.ResolveXmlTypeName(elementName)?.Name ?? elementName;
+
+    private static List<string> BaseNames(IReadOnlyDictionary<string, List<string>> declared,
+        ManagedAssemblyCatalog catalog, BaseReq req, DefGenFacts facts, out int matched)
+    {
+        var key = TypeKey(catalog, req.DefType);
+        var all = declared.TryGetValue(key, out var l) ? l : new List<string>();
+        var res = new List<string>();
+        foreach (var n in all)
+        {
+            if (req.Predicate == "any")
+            {
+                // Gene 的第二基底由第一基底的类型决定，这里只做「该名字是不是通行的第二基底」粗筛。
+                if (req.Predicate == "any" && req.DefType.Length == 0) { res.Add(n); continue; }
+            }
+            switch (req.Predicate)
+            {
+                case "any": res.Add(n); break;
+                case "geneSource": res.Add(n); break;
+                case "naturalRock":
+                    if (facts.IsNaturalRock(key, n)) res.Add(n);
+                    break;
+                default:
+                    if (req.Predicate.StartsWith("child:", StringComparison.Ordinal))
+                    {
+                        if (facts.HasChild(key, n, req.Predicate[6..])) res.Add(n);
+                    }
+                    else if (req.Predicate.StartsWith("colorType:", StringComparison.Ordinal))
+                    {
+                        if (facts.Scalar(key, n, "colorType") == req.Predicate[10..]) res.Add(n);
+                    }
+                    else if (req.Predicate.StartsWith("intGt:", StringComparison.Ordinal))
+                    {
+                        // `intGt:<标量名>:<下界>` —— IL 实证的**数值条件**谓词（如 techprintCount > 0）。
+                        var parts = req.Predicate.Split(':');
+                        var raw = facts.Scalar(key, n, parts[1]);
+                        if (raw is not null && int.TryParse(raw, out var v) && v > int.Parse(parts[2])) res.Add(n);
+                    }
+                    break;
+            }
+        }
+        matched = res.Count;
+        return res;
+    }
+
+    /// <summary>
+    /// IL 实测：读 `RimWorld.DefGenerator.GenerateImpliedDefs_PreResolve / _PostResolve` 的
+    /// 调用目标（`call <生成器>::Implied*`）—— 这就是「引擎会跑哪些生成器」的权威清单。
+    /// </summary>
+    private static List<string> DiscoverGenerators(ManagedAssemblyCatalog catalog)
+    {
+        var res = new List<string>();
+        var t = catalog.Find("RimWorld.DefGenerator");
+        if (t is null) return res;
+        foreach (var m in t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+        {
+            if (!m.Name.StartsWith("GenerateImpliedDefs", StringComparison.Ordinal)) continue;
+            foreach (var called in CalledMethods(m))
+                if (called.Name.StartsWith("Implied", StringComparison.Ordinal) && called.DeclaringType is { } d)
+                {
+                    var entry = $"{d.FullName}::{called.Name}";
+                    if (!res.Contains(entry, StringComparer.Ordinal)) res.Add(entry);
+                }
+        }
+        res.Sort(StringComparer.Ordinal);
+        return res;
+    }
+
+    private static IEnumerable<MethodBase> CalledMethods(MethodBase m)
+    {
+        var res = new List<MethodBase>();
+        var module = m.Module;
+        var il = m.GetMethodBody()?.GetILAsByteArray();
+        if (il is null) return res;
+        for (var i = 0; i + 4 < il.Length; i++)
+        {
+            if (il[i] is not (0x28 or 0x6F or 0xFE)) continue;
+            try
+            {
+                var tok = BitConverter.ToInt32(il, i + 1);
+                if (module.ResolveMember(tok) is MethodBase mb) res.Add(mb);
+            }
+            catch { /* 非成员 token */ }
+        }
+        return res;
+    }
+
+    /// <summary>
+    /// 该生成器（含其嵌套状态机）IL 里的全部字符串字面量 + 引用到的字段名 + 调用的方法名。
+    /// ★ `calls` 用来给**谓词本身**钉证据：例如 Techprints 的谓词是 `techprintCount &gt; 0`（不是某个
+    ///   XML 子元素），它的依据就是 IL 里那句 `call ResearchProjectDef.get_TechprintCount`。
+    /// </summary>
+    private static (HashSet<string> Literals, HashSet<string> FieldRefs, HashSet<string> CallRefs) IlEvidence(Type genType)
+    {
+        var lits = new HashSet<string>(StringComparer.Ordinal);
+        var fields = new HashSet<string>(StringComparer.Ordinal);
+        var calls = new HashSet<string>(StringComparer.Ordinal);
+        var types = new List<Type> { genType };
+        types.AddRange(genType.GetNestedTypes(BindingFlags.Public | BindingFlags.NonPublic));
+        foreach (var t in types)
+        {
+            foreach (var m in t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance |
+                                           BindingFlags.Static | BindingFlags.DeclaredOnly))
+            {
+                var module = m.Module;
+                var il = m.GetMethodBody()?.GetILAsByteArray();
+                if (il is null) continue;
+                for (var i = 0; i + 4 < il.Length; i++)
+                {
+                    if (il[i] == 0x72)
+                    {
+                        try { lits.Add(module.ResolveString(BitConverter.ToInt32(il, i + 1))); } catch { }
+                    }
+                    else if (il[i] is 0x7B or 0x7C or 0x7D or 0x7E or 0x80)   // ldfld/ldflda/stfld/ldsfld/stsfld
+                    {
+                        try { var fi = module.ResolveField(BitConverter.ToInt32(il, i + 1)); if (fi is not null) fields.Add(fi.Name); } catch { }
+                    }
+                    else if (il[i] is 0x28 or 0x6F)   // call / callvirt
+                    {
+                        try
+                        {
+                            var mi = module.ResolveMethod(BitConverter.ToInt32(il, i + 1));
+                            if (mi?.DeclaringType is { } dt) calls.Add(dt.Name + "." + mi.Name);
+                        }
+                        catch { }
+                    }
+                }
+            }
+        }
+        return (lits, fields, calls);
+    }
+}
+
+// ── 第 3 期 Task 6b：事实表 + 扫描器 ──────────────────────────────────────────
+/// <summary>
+/// def 的**一级/二级子元素事实**（生成规则谓词用）。
+/// ★ 继承：引擎在继承之后才建 def，所以谓词必须按**解析后的内容**求值；
+///   <see cref="DefGenFactScanner"/> 会把祖先的同一份事实并进来（否则「子 def 从父类继承
+///   `&lt;race&gt;`」会被漏掉，那会让 `Corpse_&lt;子&gt;` 变成假阳）。
+/// </summary>
+public sealed class DefGenFacts
+{
+    private sealed class Decl
+    {
+        public HashSet<string> Children { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, string> Scalar { get; } = new(StringComparer.Ordinal);
+        public bool NaturalRock;
+        public string GeneKind = "Skill";
+    }
+
+    private readonly Dictionary<string, Decl> _byKey = new(StringComparer.Ordinal);
+
+    private static string K(string type, string name) => type + "\u0000" + name;
+
+    private Decl Get(string type, string name)
+    {
+        var k = K(type, name);
+        if (!_byKey.TryGetValue(k, out var d)) _byKey[k] = d = new Decl();
+        return d;
+    }
+
+    internal void AddChild(string type, string name, string child) => Get(type, name).Children.Add(child);
+
+    internal void SetScalar(string type, string name, string key, string value) =>
+        Get(type, name).Scalar[key] = value;
+
+    internal void SetGeneKind(string type, string name, string kind) => Get(type, name).GeneKind = kind;
+
+    internal void SetNaturalRock(string type, string name, bool natural, bool resource) =>
+        Get(type, name).NaturalRock = natural && !resource;
+
+    /// <summary>把 (srcType, srcName) 的事实并进 (dstType, dstName)（继承链用）。</summary>
+    internal void MergeInto(string dstType, string dstName, DefGenFacts source, string srcType, string srcName)
+    {
+        if (!source._byKey.TryGetValue(K(srcType, srcName), out var src)) return;
+        var dst = Get(dstType, dstName);
+        foreach (var c in src.Children) dst.Children.Add(c);
+        foreach (var kv in src.Scalar) dst.Scalar[kv.Key] = kv.Value;
+        if (src.NaturalRock) dst.NaturalRock = true;
+        if (src.GeneKind != "Skill") dst.GeneKind = src.GeneKind;
+    }
+
+    public bool HasChild(string type, string name, string child) =>
+        _byKey.TryGetValue(K(type, name), out var d) && d.Children.Contains(child);
+
+    public string? Scalar(string type, string name, string key) =>
+        _byKey.TryGetValue(K(type, name), out var d) && d.Scalar.TryGetValue(key, out var v) ? v : null;
+
+    public bool IsNaturalRock(string type, string name) =>
+        _byKey.TryGetValue(K(type, name), out var d) && d.NaturalRock;
+
+    public string GeneKind(string defName)
+    {
+        foreach (var kv in _byKey)
+        {
+            var i = kv.Key.IndexOf('\u0000');
+            if (i < 0) continue;
+            if (kv.Key[(i + 1)..] == defName) return kv.Value.GeneKind;
+        }
+        return "Skill";
+    }
+}
+
+/// <summary>
+/// 把每个 def 的一级/二级子元素读成 <see cref="DefGenFacts"/>（一次额外流式扫描）。
+/// 归属键与 <see cref="ReferenceCheck"/> 同源：**按文件内 depth==1 的出现顺序**对应
+/// `ctx.Defs`（同一物理行多个 def 也不会串味 —— 与 Task 5c 的教训一致）。
+/// </summary>
+internal static class DefGenFactScanner
+{
+    internal static DefGenFacts Scan(CheckContext ctx, ManagedAssemblyCatalog catalog, InheritanceLayer.Analysis analysis)
+    {
+        var raw = new DefGenFacts();
+        foreach (var group in ctx.Defs.GroupBy(d => d.FileAbs, StringComparer.OrdinalIgnoreCase))
+        {
+            var defsInFile = group as IList<RawDef> ?? group.ToList();
+            if (defsInFile.Count == 0) continue;
+            var defIdx = 0;
+            var text = new System.Text.StringBuilder();
+            var natural = false;
+            var resource = false;
+            try
+            {
+                using var stream = File.OpenRead(group.Key);
+                using var reader = XmlReader.Create(stream, new XmlReaderSettings
+                {
+                    IgnoreComments = true,
+                    IgnoreWhitespace = true,
+                    DtdProcessing = DtdProcessing.Prohibit
+                });
+                var stack = new List<string>(8);
+                while (reader.Read())
+                {
+                    if (reader.NodeType == XmlNodeType.Element)
+                    {
+                        var depth = reader.Depth;
+                        if (depth == 0) continue;
+                        if (depth == 1)
+                        {
+                            if (defIdx >= defsInFile.Count) break;
+                            var d = defsInFile[defIdx++];
+                            stack.Clear();
+                            stack.Add(d.DefType);
+                            natural = false;
+                            resource = false;
+                            continue;
+                        }
+                        if (defIdx == 0) continue;
+                        // stack[d-1] = 深度 d 的元素名（stack[0] = 深度 1 的 def 元素名）
+                        while (stack.Count > depth) stack.RemoveAt(stack.Count - 1);
+                        while (stack.Count < depth) stack.Add(string.Empty);
+                        stack.Add(reader.Name);
+                        if (depth <= 4) text.Clear();
+                        continue;
+                    }
+
+                    if (reader.NodeType == XmlNodeType.EndElement)
+                    {
+                        var depth = reader.Depth;
+                        if (depth < 2 || defIdx == 0) continue;
+                        var d = defsInFile[defIdx - 1];
+                        var typeKey = catalog.ResolveXmlTypeName(d.ResolvedTypeName)?.Name ?? d.ResolvedTypeName;
+                        var name = d.ReferableName;
+                        if (string.IsNullOrEmpty(name)) continue;
+                        var txt = text.ToString().Trim();
+                        if (depth == 2)
+                        {
+                            raw.AddChild(typeKey, name, reader.Name);
+                            if (txt.Length > 0)
+                            {
+                                raw.SetScalar(typeKey, name, reader.Name, txt);
+                                if (reader.Name == "geneTemplateType") raw.SetGeneKind(typeKey, name, txt);
+                            }
+                        }
+                        else if (depth == 3 && stack.Count > 2 && stack[2] == "building")
+                        {
+                            if (reader.Name == "isNaturalRock") natural = txt == "true";
+                            else if (reader.Name == "isResourceRock") resource = txt == "true";
+                            raw.SetNaturalRock(typeKey, name, natural, resource);
+                        }
+                        else if (depth == 3 && stack.Count > 2 && stack[2] == "recipeMaker" && txt.Length > 0)
+                        {
+                            // RecipeDefGenerator 的 Bulk 变体门是 `recipeMaker.bulkRecipeCount > 0`
+                            //（IL：`ldfld RecipeMakerProperties.bulkRecipeCount` + `ldc.i4.0` + `ble.s`）。
+                            raw.SetScalar(typeKey, name, "recipeMaker." + reader.Name, txt);
+                        }
+                        continue;
+                    }
+
+                    if (reader.NodeType is XmlNodeType.Text or XmlNodeType.CDATA)
+                        if (reader.Depth - 1 <= 4) text.Append(reader.Value);
+                }
+            }
+            catch { /* 解析失败由 RD2001 报；本扫描只做尽力而为的事实收集 */ }
+        }
+
+        // ★ 继承：把祖先链的事实并进本声明（引擎在继承之后才建 def —— 谓词必须按解析后的内容求值）。
+        //   ★ 为什么自己走 ParentName 而不用 InheritanceLayer.Walk：本类的键是「名字」，
+        //     而 Name 空间优先 + defName 兜底正是 Task 5a 定下的解析口径；这里只需**祖先的 XML 事实**，
+        //     不需要链的解析依据，所以就地做一次带环保护的窄遍历即可（不复制第二套合并语义）。
+        var byName = new Dictionary<string, RawDef>(StringComparer.Ordinal);
+        foreach (var d in ctx.Defs)
+        {
+            foreach (var nm in new[] { d.NameAttr, d.DefName })
+                if (!string.IsNullOrEmpty(nm)) byName.TryAdd(nm!, d);
+        }
+        var effective = new DefGenFacts();
+        foreach (var d in ctx.Defs)
+        {
+            var typeKey = catalog.ResolveXmlTypeName(d.ResolvedTypeName)?.Name ?? d.ResolvedTypeName;
+            var name = d.ReferableName;
+            if (string.IsNullOrEmpty(name)) continue;
+            effective.MergeInto(typeKey, name, raw, typeKey, name);
+            var visited = new HashSet<string>(StringComparer.Ordinal) { name! };
+            var cur = d;
+            for (var hop = 0; hop < 64; hop++)
+            {
+                if (cur.ParentName is not { Length: > 0 } pn || !visited.Add(pn)) break;
+                if (!byName.TryGetValue(pn, out var parent)) break;
+                var pn2 = parent.ReferableName;
+                if (string.IsNullOrEmpty(pn2)) break;
+                var pk = catalog.ResolveXmlTypeName(parent.ResolvedTypeName)?.Name ?? parent.ResolvedTypeName;
+                effective.MergeInto(typeKey, name!, raw, pk, pn2!);
+                cur = parent;
+            }
+        }        return effective;
     }
 }

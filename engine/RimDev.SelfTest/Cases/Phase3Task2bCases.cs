@@ -244,8 +244,8 @@ public static class Phase3Task2bCases
                               + $"error={errors.Count}");
             T.Eq(official.Count, 6, "官方包数（Core + 5 DLC）");
             T.True(scan.Defs.Count > 10_000, $"官方 def 数应 > 10000，实际 {scan.Defs.Count}");
-            T.Eq(errors.Count, 0, "官方内容上 error 必须 0：" + string.Join(" | ",
-                errors.Take(10).Select(x => $"[{x.Code}] {x.Message}")));
+            // ★ Task 6b 改口径：见 AssertOfficialErrorBaseline（「假阳 = 0」，那条真缺陷逐条钉死）。
+            Phase3Task6Cases.AssertOfficialErrorBaseline(errors, "phase3-task2b 官方 6 包");
         });
 
         // ============ 提速的等价性（合成池 + 边界） ============

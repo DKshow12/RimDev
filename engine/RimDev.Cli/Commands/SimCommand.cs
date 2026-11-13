@@ -197,6 +197,32 @@ public static class SimCommand
                         filesSkippedByCache = 0,
                     },
                     loadResult = load,
+                    // ★ 第 3 期 Task 6b：运行期生成 def 的**建模自报**（口径本身要能被审计）。
+                    //   `unmodeledGenerators` 非空 = 有生成器入口没被规则覆盖（绝不静默）。
+                    generatedDefs = reference?.LastSet is null ? null : new
+                    {
+                        generatedNames = reference.LastSet.GeneratedDefNames,
+                        evidenceFailures = reference.LastSet.GeneratorModel?.EvidenceFailures ?? 0,
+                        discoveredGenerators = reference.LastSet.GeneratorModel?.DiscoveredGenerators
+                            ?? (IReadOnlyList<string>)Array.Empty<string>(),
+                        unmodeledGenerators = reference.LastSet.GeneratorModel?.UnmodeledGenerators
+                            ?? (IReadOnlyList<string>)Array.Empty<string>(),
+                        rules = (reference.LastSet.GeneratorModel?.Rules ?? (IReadOnlyList<GeneratedRuleReport>)Array.Empty<GeneratedRuleReport>())
+                            .Select(r => new
+                            {
+                                rule = r.RuleId,
+                                generator = r.Generator,
+                                method = r.Method,
+                                producedDefType = r.ProducedDefType,
+                                nameShape = r.NameShape,
+                                baseSpec = r.BaseSpec,
+                                ilEvidenceOk = r.IlEvidenceOk,
+                                evidence = r.Evidence,
+                                baseDefsMatched = r.BaseDefsMatched,
+                                baseBDefsMatched = r.BaseBDefsMatched,
+                                namesGenerated = r.NamesGenerated,
+                            }),
+                    },
                     referenceResolution = refs is null ? null : new
                     {
                         declarationsTraversed = refs.DeclarationsTraversed,
@@ -305,6 +331,17 @@ public static class SimCommand
                           + $"（loader 类型 {reference?.LastIndex?.CustomLoaderTypeCount ?? 0} 个，"
                           + $"其自身引用槽 {reference?.LastIndex?.CustomLoaderOwnRefSlotCount ?? 0} 个）");
         Console.WriteLine($"  引用解析              {refs?.Describe() ?? "(未运行)"}");
+        var gm = reference?.LastSet?.GeneratorModel;
+        Console.WriteLine($"  运行期生成 def        生成 {reference?.LastSet?.GeneratedDefNames ?? 0} 个名"
+                          + $"（生成器入口 {gm?.DiscoveredGenerators.Count ?? 0} 个 / 规则 {gm?.Rules.Count ?? 0} 条"
+                          + $" / IL 证据失败 {gm?.EvidenceFailures ?? 0} / 未建模入口 {gm?.UnmodeledGenerators.Count ?? 0}）");
+        if (gm is not null)
+            foreach (var r in gm.Rules)
+                Console.WriteLine($"    [{r.RuleId}] {r.ProducedDefType} {r.NameShape} ← {r.BaseSpec}"
+                                  + $"  基底 A{r.BaseDefsMatched}/B{r.BaseBDefsMatched} → 名字 {r.NamesGenerated}"
+                                  + (r.IlEvidenceOk ? "" : $"  ★ IL 证据失败：{r.Evidence}"));
+        if (gm is not null)
+            foreach (var u in gm.UnmodeledGenerators) Console.WriteLine($"    ★ 未建模生成器入口：{u}");
         Console.WriteLine($"  补丁求值              scan ∩ active：defFiles={patch?.LastInputs?.DefFiles ?? 0}"
                           + $" patchFiles={patch?.LastInputs?.PatchFiles ?? 0}"
                           + $" 顶层 def 节点 {patchStats?.DefNodesBeforePatches ?? 0}→{patchStats?.DefNodesAfterPatches ?? 0}"

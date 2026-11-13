@@ -562,7 +562,7 @@ public static class Phase3Task6Cases
             T.Eq(creep.Count, 0, "官方 Anomaly 的 CreepJoinerBaseDef 类引用必须是 0 条（修前 116 条假阳）");
             T.Eq(unexplained, 0, "每条官方 RD3001 都必须可归因（别的 DefType / 磁盘上无声明）否则就是我们的假阳");
             T.Eq(otherType + nowhere, rd.Count, "归因桶必须覆盖全部 RD3001");
-            T.True(rd.Count > 0, "Step 4 的 0 条门禁**未达成**：见报告（运行时生成的 def，Plan 只列了两条边界）");
+            T.Eq(rd.Count, 1, "★ 改口径后（08 §4f.4）：官方只剩 1 条 RD3001 = 那条已定性的 Anomaly 真缺陷（修前 97 条）");
         });
 
         T.Case("★ 口径自证：DefIndex 的 (DefType,defName) 键与 SimulatedDefSet 的类型键同源（元素名，非 Class=）", () =>
@@ -591,8 +591,475 @@ public static class Phase3Task6Cases
             T.True(check.LastSet!.Contains("ThingDef", "Ammoish"), "必须按元素名 ThingDef 登记");
             T.False(check.LastSet!.Contains("NoSuch.ModAmmoDef", "Ammoish"), "不得按 Class= 登记");
         });
+        // ════════════════════════════════════════════════════════════════════════
+        // Task 6b —— 引擎「运行期生成 def」建模 + 抽象声明口径 + 官方门禁改口径
+        //
+        // 背景（`08` §4f）：Task 6 在官方 6 包上报 97 条 RD3001（error）。逐条归因 =
+        //   · 95 条「引擎运行期生成的 def」（我们的假阳，本 Task 建模消除）
+        //   · 1 条「抽象声明上的引用」（口径假阳，本 Task 修掉）
+        //   · 1 条**真缺陷**（Anomaly 的 `WeatherDef.ambientSounds` → 不存在的 SoundDef
+        //     `Ambient_MetalHell`；引擎级证据 = wanter 已注册 + `FailMode.LogErrors` 触发
+        //     `Verse.Log.Error`）—— 该条**保留为 error 并逐条钉死**，见 Step 5 的钉子。
+        // ════════════════════════════════════════════════════════════════════════
+
+        T.Case("★★ 6b/Step 1：生成器规则表 —— 每条规则的 IL 证据 + 基底谓词 + 产出（逐条打印）", () =>
+        {
+            var (_, _, check) = OfficialRun();
+            var set = check.LastSet!;
+            var gen = set.GeneratorModel!;
+            foreach (var r in gen.Rules)
+                Console.WriteLine($"      [{r.RuleId}] {r.Generator}::{r.Method} → {r.ProducedDefType} "
+                                  + $"shape={r.NameShape} 谓词={r.BaseSpec} IL={r.IlEvidenceOk} "
+                                  + $"A={r.BaseDefsMatched}/B={r.BaseBDefsMatched} 名字={r.NamesGenerated} 证据={r.Evidence}");
+            Console.WriteLine($"      生成器入口={gen.DiscoveredGenerators.Count}（读 RimWorld.DefGenerator 的 IL 调用目标）"
+                              + $" / 规则={gen.Rules.Count} / 证据失败={gen.EvidenceFailures} / 未建模={gen.UnmodeledGenerators.Count}"
+                              + $" / 生成名={gen.Names.Count}");
+            foreach (var u in gen.UnmodeledGenerators) Console.WriteLine("      ★ 未建模入口: " + u);
+            T.Eq(gen.Rules.Count, 14, "规则表条数（Recipe 的 Bulk 变体是独立一条）");
+            T.Eq(gen.EvidenceFailures, 0, "IL 证据失败数（lit:/call:/field: 必须在生成器类的 IL 里找到，否则该规则【丢弃并计数】）");
+            T.True(gen.Names.Count > 1000, $"官方语料上的生成名数量级（实际 {gen.Names.Count}）");
+            T.True(gen.UnmodeledGenerators.Count > 0, "未建模入口必须响亮列出（防「没建模」被读成「没问题」）");
+            T.Eq(set.GeneratedDefNames, gen.Names.Count, "GeneratedDefNames 必须等于模型产出的名字数");
+            // 这两条是**改前会失败**的（改前 `child:techprint` 恒匹配 0 ⇒ Techprint 规则是空转的，
+            // 而 `Make_XBulk` 根本没建模 ⇒ 两类潜在假阳）。它们钉住「谓词必须由 IL 实证」。
+            var tech = gen.Rules.Single(r => r.RuleId == "Techprints");
+            T.True(tech.BaseDefsMatched > 0, $"Techprints 谓词必须真的匹配到基底（改前 child:techprint = 0），实际 {tech.BaseDefsMatched}");
+            var bulk = gen.Rules.Single(r => r.RuleId == "RecipeBulk");
+            T.True(bulk.BaseDefsMatched > 0, $"RecipeBulk 谓词必须真的匹配到基底（改前该规则不存在），实际 {bulk.BaseDefsMatched}");
+        });
+
+        T.Case("★★ 6b/Step 2 双向①：修前官方被引用的 71 个生成名必须【全部】被模型覆盖", () =>
+        {
+            // 数据来源 = `_rimdev\_tmp\task6b\rd3001-before.tsv`（修前 97 条 RD3001 的原始输出）。
+            // 按 (targetDefType, targetDefName) 去重后：71 条落在生成器产出的三个类型上，
+            // 另 2 条 = RulePackDef（抽象声明）+ SoundDef（真缺陷）。
+            var (_, _, check) = OfficialRun();
+            var set = check.LastSet!;
+            var before = new[]
+            {
+                "GeneDef|AddictionImmune_WakeUp",
+                "GeneDef|AptitudePoor_Animals",
+                "GeneDef|AptitudePoor_Artistic",
+                "GeneDef|AptitudePoor_Cooking",
+                "GeneDef|AptitudePoor_Intellectual",
+                "GeneDef|AptitudePoor_Plants",
+                "GeneDef|AptitudePoor_Shooting",
+                "GeneDef|AptitudePoor_Social",
+                "GeneDef|AptitudeRemarkable_Animals",
+                "GeneDef|AptitudeRemarkable_Construction",
+                "GeneDef|AptitudeRemarkable_Crafting",
+                "GeneDef|AptitudeRemarkable_Intellectual",
+                "GeneDef|AptitudeRemarkable_Melee",
+                "GeneDef|AptitudeRemarkable_Mining",
+                "GeneDef|AptitudeRemarkable_Shooting",
+                "GeneDef|AptitudeRemarkable_Social",
+                "GeneDef|AptitudeStrong_Intellectual",
+                "GeneDef|AptitudeStrong_Melee",
+                "GeneDef|AptitudeStrong_Social",
+                "GeneDef|AptitudeTerrible_Animals",
+                "GeneDef|AptitudeTerrible_Artistic",
+                "GeneDef|AptitudeTerrible_Melee",
+                "GeneDef|AptitudeTerrible_Mining",
+                "GeneDef|AptitudeTerrible_Plants",
+                "GeneDef|AptitudeTerrible_Social",
+                "GeneDef|ChemicalDependency_GoJuice",
+                "GeneDef|ChemicalDependency_Psychite",
+                "TerrainDef|CarpetBrownLight",
+                "TerrainDef|CarpetGranite",
+                "TerrainDef|CarpetGreen",
+                "TerrainDef|CarpetGreenMuddy",
+                "TerrainDef|CarpetGreyDark",
+                "TerrainDef|CarpetSandstone",
+                "TerrainDef|Vacstone_Rough",
+                "ThingDef|Corpse_Human",
+                "ThingDef|Corpse_Mech_Agrihand",
+                "ThingDef|Corpse_Mech_CentipedeBlaster",
+                "ThingDef|Corpse_Mech_CentipedeBurner",
+                "ThingDef|Corpse_Mech_CentipedeGunner",
+                "ThingDef|Corpse_Mech_Centurion",
+                "ThingDef|Corpse_Mech_Cleansweeper",
+                "ThingDef|Corpse_Mech_Constructoid",
+                "ThingDef|Corpse_Mech_Cyclops",
+                "ThingDef|Corpse_Mech_Diabolus",
+                "ThingDef|Corpse_Mech_Fabricor",
+                "ThingDef|Corpse_Mech_Lancer",
+                "ThingDef|Corpse_Mech_Legionary",
+                "ThingDef|Corpse_Mech_Lifter",
+                "ThingDef|Corpse_Mech_Militor",
+                "ThingDef|Corpse_Mech_Paramedic",
+                "ThingDef|Corpse_Mech_Pikeman",
+                "ThingDef|Corpse_Mech_Scorcher",
+                "ThingDef|Corpse_Mech_Scyther",
+                "ThingDef|Corpse_Mech_Tesseron",
+                "ThingDef|Corpse_Mech_Tunneler",
+                "ThingDef|Corpse_Mech_Warqueen",
+                "ThingDef|Meat_Human",
+                "ThingDef|Meat_Megaspider",
+                "ThingDef|Meat_Muffalo",
+                "ThingDef|Neurotrainer_Animals",
+                "ThingDef|Neurotrainer_Artistic",
+                "ThingDef|Neurotrainer_Construction",
+                "ThingDef|Neurotrainer_Cooking",
+                "ThingDef|Neurotrainer_Crafting",
+                "ThingDef|Neurotrainer_Intellectual",
+                "ThingDef|Neurotrainer_Medicine",
+                "ThingDef|Neurotrainer_Melee",
+                "ThingDef|Neurotrainer_Mining",
+                "ThingDef|Neurotrainer_Plants",
+                "ThingDef|Neurotrainer_Shooting",
+                "ThingDef|Neurotrainer_Social",
+            };
+            var missing = before
+                .Select(s => s.Split('|'))
+                .Where(p => !set.Contains(p[0], p[1]))
+                .Select(p => p[0] + "|" + p[1])
+                .ToList();
+            Console.WriteLine($"      修前被引用的生成名 distinct={before.Length}，模型未覆盖={missing.Count}");
+            foreach (var m in missing) Console.WriteLine("        ✗ " + m);
+            T.Eq(missing.Count, 0, "官方 XML 实际被引用的生成名必须全部被规则覆盖（否则规则不完整 ⇒ 假阳仍在）");
+        });
+
+        T.Case("★★ 6b/Step 2 双向②：每条规则的反例 —— 基底不满足谓词 / 基底不存在 ⇒ 仍必须逐个报 RD3001", () =>
+        {
+            // ★ 判别性：正例夹具里 16 个生成名**必须真的被生成**（否则「0 条 RD3001」只是「引用没被看见」）；
+            //   反例夹具里同一批名字（基底不满足谓词）**必须逐个报**。两者一起才排除「前缀白名单」。
+            var pos = RunFixture(GenPositiveXml, false);
+            var neg = RunFixture(GenNegativeXml, false);
+            var posRd = pos.Diags.Where(d => d.Code == Codes.DefNameNotFound).ToList();
+            var negRd = neg.Diags.Where(d => d.Code == Codes.DefNameNotFound).ToList();
+
+            var notGenerated = GenProbes.Where(p => !pos.Check.LastSet!.Contains(p.DefType, p.Name)).ToList();
+            Console.WriteLine($"      [正例夹具] 生成名={pos.Check.LastSet!.GeneratedDefNames}"
+                              + $" 未被生成的探针={notGenerated.Count} RD3001={posRd.Count}");
+            foreach (var p in notGenerated) Console.WriteLine($"        ✗ 未生成 {p.DefType}|{p.Name}");
+            foreach (var d in posRd) Console.WriteLine($"        ✗ 正例里不该报：{d.Message}");
+
+            var reported = negRd.Select(d => d.Evidence!["targetDefName"]).ToHashSet(StringComparer.Ordinal);
+            var notReported = GenProbes.Where(p => !reported.Contains(p.Name)).ToList();
+            Console.WriteLine($"      [反例夹具] 探针={GenProbes.Length} RD3001={negRd.Count} 未被报的探针={notReported.Count}");
+            foreach (var p in notReported) Console.WriteLine($"        ✗ 反例里漏报 {p.DefType}|{p.Name}");
+            Console.WriteLine("        反例实际报出：" + string.Join(", ",
+                negRd.Select(d => d.Evidence!["targetDefName"]).OrderBy(x => x, StringComparer.Ordinal)));
+
+            T.Eq(notGenerated.Count, 0, "正例夹具里每条规则的生成名都必须真的出现在有效集合里");
+            T.Eq(posRd.Count, 0, "正例夹具：基底满足谓词 ⇒ 一条 RD3001 都不许有（改前这些全是假阳）");
+            T.Eq(negRd.Count, GenProbes.Length, "反例夹具：基底不满足谓词/不存在 ⇒ 16 个探针必须逐个报 RD3001");
+            T.Eq(notReported.Count, 0, "反例夹具里一条都不许漏（否则规则就是「按前缀放行」）");
+        });
+
+        T.Case("★★ 6b/Step 3 抽象声明口径：抽象声明上的引用不报，但【继承它的子 def】仍必须报（判别性）", () =>
+        {
+            const string xml = """
+                <?xml version="1.0" encoding="utf-8"?>
+                <Defs>
+                  <ThingDef Name="AbsOnly" Abstract="True">
+                    <verbs>
+                      <li><defaultProjectile>AbsOnly_Missing</defaultProjectile></li>
+                    </verbs>
+                  </ThingDef>
+                  <ThingDef Name="AbsInherited" Abstract="True">
+                    <verbs>
+                      <li><defaultProjectile>AbsInherited_Missing</defaultProjectile></li>
+                    </verbs>
+                  </ThingDef>
+                  <ThingDef>
+                    <defName>ConcreteOwn</defName>
+                    <verbs>
+                      <li><defaultProjectile>Concrete_Missing</defaultProjectile></li>
+                    </verbs>
+                  </ThingDef>
+                  <ThingDef ParentName="AbsInherited">
+                    <defName>InheritorOfAbs</defName>
+                    <verbs>
+                      <li><defaultProjectile>Inheritor_Missing</defaultProjectile></li>
+                    </verbs>
+                  </ThingDef>
+                </Defs>
+                """;
+            var (diags, check) = RunOnFixture(xml);
+            var rd = diags.Where(d => d.Code == Codes.DefNameNotFound).ToList();
+            var targets = rd.Select(d => d.Evidence!["targetDefName"]).OrderBy(x => x, StringComparer.Ordinal).ToList();
+            Console.WriteLine($"      抽象声明跳过={check.LastStats!.AbstractDeclarationsSkipped}"
+                              + $"  RD3001={rd.Count}  目标=[{string.Join(", ", targets)}]");
+            foreach (var d in rd) Console.WriteLine($"        {System.IO.Path.GetFileName(d.FileAbs)}:{d.Line} {d.Message}");
+            T.True(check.LastStats!.AbstractDeclarationsSkipped >= 2, "两个 Abstract 声明都必须被跳过（计数必须报出来）");
+            T.False(targets.Contains("AbsOnly_Missing"), "纯抽象声明上的引用不得报（引擎从不实例化它，也就从不解析）");
+            T.True(targets.Contains("Concrete_Missing"), "具体声明自己的引用仍必须查");
+            T.True(targets.Contains("Inheritor_Missing"),
+                "★ 继承抽象模板的子 def **自己带着**的引用仍必须查（这才是引擎会解析的地方）");
+            // ★ 已知边界（如实钉住，不许静默）：`ReferenceCheck` 按**原始 XML 逐声明**扫描引用，
+            //   不做「合并后节点」的二次扫描。因此**只写在抽象模板上、靠继承才落到子 def 的那条引用不会被扫**
+            //   （`AbsInherited_Missing` 就在这里）。方向是**少报**（不会造出假阳）；
+            //   官方 6 包上唯一的抽象声明引用（Odyssey 的 RulePackDef）不因此产生误判。
+            T.False(targets.Contains("AbsInherited_Missing"),
+                "已知边界：只在抽象模板上写的引用不会被扫（原始 XML 口径 ⇒ 少报，不假阳）——若将来改成合并口径，这条断言应随之更新");
+        });
+
+        T.Case("★★ 6b/Step 5 门禁：官方 6 包 error 恰好 1 条，且是那条【已定性的 Anomaly 真缺陷】", () =>
+        {
+            // ★★ 这不是白名单，是「逐条钉死」：
+            //    白名单 = 按名字/前缀放行一类（新增同类缺陷会被一起吞掉）；
+            //    本钉子 = 断言「恰好 1 条 **且** 身份精确匹配」（新增任何一条官方 error 都会让它变红）。
+            // ★ 那 1 条的定性（不是我们的假阳，是官方 Anomaly 内容自己的缺陷）：
+            //    · 目标 `SoundDef Ambient_MetalHell` 在官方树 / 本机全部 mod / 整个工坊 **均无声明**；
+            //    · 引擎侧证据：把该 XML 喂进引擎自己的 `Verse.DirectXmlToObject.ObjectFromXml<WeatherDef>`
+            //      会注册 1 个 `WantedRefForList<SoundDef>`（debugWanterInfo=ambientSounds），
+            //      再调 `ResolveAllWantedCrossReferences(FailMode.LogErrors)` 会触发 `Verse.Log.Error`；
+            //      标量对照 `VerbProperties.soundCast` 与列表对照 `RaceProperties.mechEnabledWorkTypes`
+            //      行为相同 ⇒ **列表 wanter 在 LogErrors 下确实报错**，不是引擎不解析该字段。
+            //    · 主理人 2026-10-16 裁决（`08` §4f.4）：接受「官方 RD3001 = 1 且该 1 条是真缺陷」为
+            //      通过判据；门禁口径改写为「**假阳 = 0**」。
+            const string RealDefectFingerprint =
+                "RD3001|||C:\\Program Files (x86)\\Steam\\steamapps\\common\\RimWorld\\Data\\Anomaly\\Defs\\WeatherDefs\\Weathers.xml|112"
+                + "|引用悬空：Verse.WeatherDef.ambientSounds 指向不存在的 SoundDef \"Ambient_MetalHell\"";
+            var (_, diags, check) = OfficialRun();
+            var rd = diags.Where(d => d.Code == Codes.DefNameNotFound).ToList();
+            var errors = diags.Where(d => d.Severity == Severity.Error).ToList();
+            var creep = rd.Where(d => d.Message.Contains("CreepJoiner", StringComparison.Ordinal)).ToList();
+            var genish = rd.Where(d => d.Evidence!["targetDefType"] is "ThingDef" or "TerrainDef" or "GeneDef" or "RecipeDef").ToList();
+
+            Console.WriteLine($"      官方 6 包：defs={check.LastStats!.DeclarationsTraversed} 引用点={check.LastStats.ReferenceSites} "
+                              + $"RD3001={rd.Count} error={errors.Count}");
+            foreach (var d in errors) Console.WriteLine($"        {d.Code} {System.IO.Path.GetFileName(d.FileAbs)}:{d.Line} {d.Message}");
+            Console.WriteLine($"      同型反证：CreepJoiner 类引用={creep.Count}（修前 116）/ 落在生成器产出类型上的={genish.Count}（修前 95）");
+
+            T.Eq(errors.Count, 1, "官方内容上 error 必须【恰好 1 条】—— 多一条就说明有新的假阳或新的真缺陷");
+            T.Eq(rd.Count, 1, "那条唯一的 error 就是 RD3001");
+            T.Eq(rd[0].Fingerprint, RealDefectFingerprint,
+                "★ 唯一那 1 条必须是已定性的 Anomaly 真缺陷（指纹不符 = 换了别的缺陷 ⇒ 必须重新定性，不许顺手改断言）");
+            T.Eq(creep.Count, 0, "官方 Anomaly 的 CreepJoinerBaseDef 类引用必须是 0 条（修前 116 条假阳）");
+            T.Eq(genish.Count, 0, "官方内容上落在生成器产出类型（ThingDef/TerrainDef/GeneDef/RecipeDef）的 RD3001 必须是 0 条（修前 95 条假阳）");
+            Console.WriteLine("      ★ 此 1 条**不是**我们的假阳：见本用例头部的引擎级证据与主理人裁决，未做任何抑制。");
+        });
     }
 
+    // ────────────────────────────────────────────────────────────────────────────
+    // Task 6b：生成规则的**可证伪**探针（正例必须被生成 / 反例必须被报）
+    // ────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// 每个生成规则一条探针（产出 DefType + 生成名）。
+    /// **正例**夹具让基底满足谓词 ⇒ 这些名字必须真的出现在有效集合里（RD3001 = 0）；
+    /// **反例**夹具让基底不满足谓词或根本不存在 ⇒ 同一批名字必须**逐个**报 RD3001。
+    /// 两个方向一起才排除了「按前缀放行」这种无边界的实现（那会让反例夹具报 0 条）。
+    /// </summary>
+    private static readonly (string DefType, string Name)[] GenProbes =
+    {
+        ("ThingDef", "Corpse_P_Race"),
+        ("ThingDef", "UnnaturalCorpse_P_Race"),
+        ("ThingDef", "Meat_P_Race"),
+        ("ThingDef", "Neurotrainer_P_Skill"),
+        ("ThingDef", "Psytrainer_P_Ability"),
+        ("ThingDef", "Techprint_P_Research"),
+        ("ThingDef", "Blueprint_P_Build"),
+        ("ThingDef", "Blueprint_Install_P_Build"),
+        ("ThingDef", "Frame_P_Build"),
+        ("TerrainDef", "P_Stone_Rough"),
+        ("TerrainDef", "P_Stone_RoughHewn"),
+        ("TerrainDef", "P_Stone_Smooth"),
+        ("TerrainDef", "P_CarpetBlue"),
+        ("RecipeDef", "Make_P_Build"),
+        ("RecipeDef", "Make_P_BuildBulk"),
+        ("GeneDef", "P_Gene_P_GeneSkill"),
+    };
+
+    /// <summary>正例夹具：每个基底都**满足**它那条规则的谓词（16 个探针必须全部被生成）。</summary>
+    private const string GenPositiveXml = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <Defs>
+          <DesignationCategoryDef>
+            <defName>P_Cat</defName>
+          </DesignationCategoryDef>
+          <ThingDef>
+            <defName>P_Race</defName>
+            <race>Humanlike</race>
+          </ThingDef>
+          <SkillDef>
+            <defName>P_Skill</defName>
+          </SkillDef>
+          <AbilityDef>
+            <defName>P_Ability</defName>
+          </AbilityDef>
+          <ResearchProjectDef>
+            <defName>P_Research</defName>
+            <techprintCount>2</techprintCount>
+          </ResearchProjectDef>
+          <ThingDef>
+            <defName>P_Build</defName>
+            <designationCategory>P_Cat</designationCategory>
+            <recipeMaker>
+              <bulkRecipeCount>2</bulkRecipeCount>
+            </recipeMaker>
+          </ThingDef>
+          <ThingDef>
+            <defName>P_Stone</defName>
+            <building>
+              <isNaturalRock>true</isNaturalRock>
+            </building>
+          </ThingDef>
+          <TerrainTemplateDef>
+            <defName>P_Carpet</defName>
+          </TerrainTemplateDef>
+          <ColorDef>
+            <defName>Structure_Blue</defName>
+            <colorType>Structure</colorType>
+          </ColorDef>
+          <GeneTemplateDef>
+            <defName>P_Gene</defName>
+          </GeneTemplateDef>
+          <SkillDef>
+            <defName>P_GeneSkill</defName>
+          </SkillDef>
+          <ThingDef>
+            <defName>Carrier_Thing</defName>
+            <verbs>
+              <li><defaultProjectile>Corpse_P_Race</defaultProjectile></li>
+              <li><defaultProjectile>UnnaturalCorpse_P_Race</defaultProjectile></li>
+              <li><defaultProjectile>Meat_P_Race</defaultProjectile></li>
+              <li><defaultProjectile>Neurotrainer_P_Skill</defaultProjectile></li>
+              <li><defaultProjectile>Psytrainer_P_Ability</defaultProjectile></li>
+              <li><defaultProjectile>Techprint_P_Research</defaultProjectile></li>
+              <li><defaultProjectile>Blueprint_P_Build</defaultProjectile></li>
+              <li><defaultProjectile>Blueprint_Install_P_Build</defaultProjectile></li>
+              <li><defaultProjectile>Frame_P_Build</defaultProjectile></li>
+            </verbs>
+            <recipes>
+              <li>Make_P_Build</li>
+              <li>Make_P_BuildBulk</li>
+            </recipes>
+          </ThingDef>
+          <LayoutRoomDef>
+            <defName>Carrier_Room</defName>
+            <floorTypes>
+              <li>P_Stone_Rough</li>
+              <li>P_Stone_RoughHewn</li>
+              <li>P_Stone_Smooth</li>
+              <li>P_CarpetBlue</li>
+            </floorTypes>
+          </LayoutRoomDef>
+          <XenotypeDef>
+            <defName>Carrier_Xeno</defName>
+            <genes>
+              <li>P_Gene_P_GeneSkill</li>
+            </genes>
+          </XenotypeDef>
+        </Defs>
+        """;
+
+    /// <summary>
+    /// 反例夹具：基底**不满足**谓词或根本不存在（`P_Race` 无 `&lt;race&gt;`、`P_Skill`/`P_Ability` 不存在、
+    /// `techprintCount=0`、`P_Build` 既无 `designationCategory` 也无 `recipeMaker`、
+    /// `isNaturalRock=false`、`ColorDef.colorType≠Structure`、模板是 Chemical 而源只有 SkillDef）
+    /// ⇒ 同一批 16 个探针必须**逐个**报 RD3001。
+    /// </summary>
+    private const string GenNegativeXml = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <Defs>
+          <ThingDef>
+            <defName>P_Race</defName>
+          </ThingDef>
+          <ResearchProjectDef>
+            <defName>P_Research</defName>
+            <techprintCount>0</techprintCount>
+          </ResearchProjectDef>
+          <ThingDef>
+            <defName>P_Build</defName>
+          </ThingDef>
+          <ThingDef>
+            <defName>P_Stone</defName>
+            <building>
+              <isNaturalRock>false</isNaturalRock>
+            </building>
+          </ThingDef>
+          <TerrainTemplateDef>
+            <defName>P_Carpet</defName>
+          </TerrainTemplateDef>
+          <ColorDef>
+            <defName>Structure_Blue</defName>
+            <colorType>Ideology</colorType>
+          </ColorDef>
+          <GeneTemplateDef>
+            <defName>P_Gene</defName>
+            <geneTemplateType>Chemical</geneTemplateType>
+          </GeneTemplateDef>
+          <SkillDef>
+            <defName>P_GeneSkill</defName>
+          </SkillDef>
+          <ThingDef>
+            <defName>Carrier_Thing</defName>
+            <verbs>
+              <li><defaultProjectile>Corpse_P_Race</defaultProjectile></li>
+              <li><defaultProjectile>UnnaturalCorpse_P_Race</defaultProjectile></li>
+              <li><defaultProjectile>Meat_P_Race</defaultProjectile></li>
+              <li><defaultProjectile>Neurotrainer_P_Skill</defaultProjectile></li>
+              <li><defaultProjectile>Psytrainer_P_Ability</defaultProjectile></li>
+              <li><defaultProjectile>Techprint_P_Research</defaultProjectile></li>
+              <li><defaultProjectile>Blueprint_P_Build</defaultProjectile></li>
+              <li><defaultProjectile>Blueprint_Install_P_Build</defaultProjectile></li>
+              <li><defaultProjectile>Frame_P_Build</defaultProjectile></li>
+            </verbs>
+            <recipes>
+              <li>Make_P_Build</li>
+              <li>Make_P_BuildBulk</li>
+            </recipes>
+          </ThingDef>
+          <LayoutRoomDef>
+            <defName>Carrier_Room</defName>
+            <floorTypes>
+              <li>P_Stone_Rough</li>
+              <li>P_Stone_RoughHewn</li>
+              <li>P_Stone_Smooth</li>
+              <li>P_CarpetBlue</li>
+            </floorTypes>
+          </LayoutRoomDef>
+          <XenotypeDef>
+            <defName>Carrier_Xeno</defName>
+            <genes>
+              <li>P_Gene_P_GeneSkill</li>
+            </genes>
+          </XenotypeDef>
+        </Defs>
+        """;
+    // ────────────────────────────────────────────────────────────────────────────
+    // Task 6b Step 5：官方 6 包的「error 基线」钉子（3 条官方用例共用同一份判据）
+    // ────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>官方 6 包上那条**已定性**的真缺陷的精确身份（Anomaly `Weathers.xml:112`）。</summary>
+    public const string OfficialRealDefectCode = "RD3001";
+    public const string OfficialRealDefectFile = "Weathers.xml";
+    public const int OfficialRealDefectLine = 112;
+    public const string OfficialRealDefectDefType = "SoundDef";
+    public const string OfficialRealDefectDefName = "Ambient_MetalHell";
+
+    /// <summary>
+    /// ★★ Task 6b Step 5 的统一钉子：官方 6 包上的 error 必须**恰好 1 条**，且**身份精确匹配**那条
+    /// 已定性的 Anomaly 真缺陷。★ **这不是白名单** —— 白名单是「按名字/前缀放行一类」，新增同类缺陷
+    /// 会被一起吞掉；这里是「逐条钉死唯一一条」⇒ 任何**新增**的官方 error（含新的 RD3001）都会让钉子变红。
+    ///
+    /// 为什么这 1 条不是我们的假阳（三层证据，均未使用任何抑制）：
+    ///  (1) 目标 `SoundDef Ambient_MetalHell` 在官方树 / 本机全部本地 mod / 整个工坊内容里
+    ///      **均无声明**（全盘扫描 0 命中）；官方同族的 `Ambient_Undercave`/`Ambient_DeathPall` 等
+    ///      都在 `Anomaly\Defs\SoundDefs\World_Sustainers_Misc.xml` 里定义，唯独它没有。
+    ///  (2) **引擎级证据**（用引擎自己的代码路径复现，不是读文档）：把该 XML 喂进
+    ///      `Verse.DirectXmlToObject.ObjectFromXml<WeatherDef>` 会注册 **1 个**
+    ///      `DirectXmlCrossRefLoader.WantedRefForList<SoundDef>`（debugWanterInfo=ambientSounds）；
+    ///      再调 `ResolveAllWantedCrossReferences(FailMode.LogErrors)` 会走到 `Verse.Log.Error`。
+    ///      标量对照 `VerbProperties.soundCast` 与列表对照 `RaceProperties.mechEnabledWorkTypes`
+    ///      行为完全相同 ⇒ 「引擎不解析列表字段」这条假设被**证伪**。
+    ///  (3) 主理人 2026-10-16 裁决（`08` §4f.4）：门禁口径改写为「**假阳 = 0**」，该真缺陷保留为 error。
+    /// </summary>
+    public static void AssertOfficialErrorBaseline(IReadOnlyList<Diagnostic> errors, string context)
+    {
+        T.Eq(errors.Count, 1, $"{context}：官方 error 必须【恰好 1 条】（多一条 = 新的假阳或新的真缺陷）"
+            + "。命中：" + string.Join(" | ",
+                errors.Select(d => $"[{d.Code}] {System.IO.Path.GetFileName(d.FileAbs ?? "?")}:{d.Line} {d.Message}")));
+        var d = errors[0];
+        T.Eq(d.Code, OfficialRealDefectCode, $"{context}：唯一那条 error 的码");
+        T.Eq(System.IO.Path.GetFileName(d.FileAbs ?? ""), OfficialRealDefectFile, $"{context}：缺陷所在文件");
+        T.Eq(d.Line ?? -1, OfficialRealDefectLine, $"{context}：缺陷行号");
+        T.Eq(d.Evidence?.GetValueOrDefault("targetDefType") ?? "", OfficialRealDefectDefType, $"{context}：目标 DefType");
+        T.Eq(d.Evidence?.GetValueOrDefault("targetDefName") ?? "", OfficialRealDefectDefName, $"{context}：目标 defName");
+    }
     // ────────────────────────────────────────────────────────────────────────────
     // 夹具运行器
     // ────────────────────────────────────────────────────────────────────────────

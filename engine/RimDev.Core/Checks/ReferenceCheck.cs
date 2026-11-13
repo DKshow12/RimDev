@@ -32,6 +32,8 @@ public sealed record ReferenceStats(
     int ClassDispatchMisses,
     int ClassTypeMismatch,
     int ParityFailures,
+    /// <summary>★ Task 6b Step 3：Abstract="True" 等「引擎从不实例化」的声明数（其引用不求值）。</summary>
+    int AbstractDeclarationsSkipped,
     long ElapsedMs,
     IReadOnlyList<string>? CustomLoaderSamples = null)
 {
@@ -93,6 +95,8 @@ public sealed class ReferenceCheck : ICheck
     {
         public int Traversed, SkipMayRequire, UnknownType, Sites, Exact, FullName, Assignable, Missing;
         public int Reported, CustomSkipped, UnknownFields, AbstractNoClass, ClassHits, ClassMisses, ClassTypeMismatch, ParityFailures;
+        /// <summary>★ Task 6b Step 3：`Abstract="True"` 等「引擎从不实例化」的声明数（其引用不求值）。</summary>
+        public int AbstractSkipped;
         /// <summary>边界 1（自定义 loader）的**前若干条定位** —— 「每一项可定位到 文件:行」是 sim 的验收要求。</summary>
         public readonly List<string> CustomSamples = new();
     }
@@ -161,6 +165,16 @@ public sealed class ReferenceCheck : ICheck
                             current = defsInFile[defIdx++];
                             c.Traversed++;
 
+                            // ★★ 第 3 期 Task 6b Step 3：**非 def 的声明上的引用永不解析**。
+                            //   引擎只实例化「非 Abstract 且有 defName（可继承）」的节点；
+                            //   `RawDef.IsAbstract` 的口径 = `Abstract="True"` 或（有 Name= 且无 defName），
+                            //   正好就是「引擎从不实例化」的那一类。官方先例：
+                            //   `Data\Odyssey\Defs\TileMutators\Landmarks.xml` 的
+                            //   `<LandmarkDef Abstract="True" Name="AbandonedColonyLandmarkBase">` 里写着
+                            //   `<nameMaker>`，引擎从不解析它 ⇒ 照报就是假阳（`08` §4f.1 第 2 类）。
+                            //   ★ 但**继承它的子 def** 带着同一引用时仍要查（那才是引擎会解析的地方）。
+                            if (current.IsAbstract)
+                            { c.AbstractSkipped++; frames[1] = null; continue; }
                             // ★ 资格判定走 InheritanceLayer.IsEligible（单一真源）。**不能**用 analysis.Get：
                             //   它只覆盖带 ParentName 的声明，会让「无 ParentName 但 MayRequire 未满足」的
                             //   声明被照常遍历（引擎连 def 都不建 ⇒ 它的引用不该被求值）。
@@ -259,6 +273,7 @@ public sealed class ReferenceCheck : ICheck
             ClassDispatchMisses: c.ClassMisses,
             ClassTypeMismatch: c.ClassTypeMismatch,
             ParityFailures: c.ParityFailures,
+            AbstractDeclarationsSkipped: c.AbstractSkipped,
             ElapsedMs: sw.ElapsedMilliseconds,
             CustomLoaderSamples: c.CustomSamples);
     }

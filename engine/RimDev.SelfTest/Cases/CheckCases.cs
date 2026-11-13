@@ -164,8 +164,11 @@ public static class CheckCases
             T.Eq(officialMods.Count, 6, "官方包数（Core + 5 DLC）");
             T.True(officialFiles.Count > 0, "官方文件数不得为 0（否则「0 error」是空谈）");
             T.True(officialScan.Defs.Count > 10_000, $"官方 def 数应 > 10000，实际 {officialScan.Defs.Count}");
-            T.Eq(offErrs.Count, 0, "官方内容上 error 必须 0；命中：" + string.Join("; ",
-                offErrs.Take(10).Select(d => $"[{d.Code}] {Path.GetFileName(d.FileAbs ?? "?")}:{d.Line} {d.Message}")));
+            // ★ Task 6b 改口径（`08` §4f.4）：判据从「error = 0」改成「**误报 = 0**」。
+            //   实测的那 1 条 error 是**官方 Anomaly 自己的真缺陷**（`WeatherDef.ambientSounds` →
+            //   不存在的 `SoundDef Ambient_MetalHell`；引擎级证据见 AssertOfficialErrorBaseline 注释）。
+            //   该条被**逐条钉死**（条数恰好 1 + 身份精确匹配），**不是白名单**。
+            Phase3Task6Cases.AssertOfficialErrorBaseline(offErrs, "check/Task 2 Step 8 官方零假阳");
         });
 
         T.Case("★ 防假阳③：active 全集上 RD4001 与 RD4005 都必须为 0（改前 126 + 12）", () =>

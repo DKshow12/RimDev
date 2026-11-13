@@ -2,7 +2,7 @@ using RimDev.Cli.Commands;
 
 if (args.Length == 0)
 {
-    Console.Error.WriteLine("usage: rimdev <env|api|name|index|check|files> [options]");
+    Console.Error.WriteLine("usage: rimdev <env|api|name|index|check|files> [options]（`rimdev check --help` 看 scan scope 语义）");
     return 3;
 }
 
@@ -27,6 +27,6 @@ static int PrintVersion()
 static int Unknown(string cmd)
 {
     Console.Error.WriteLine($"未知命令: {cmd}");
-    Console.Error.WriteLine("usage: rimdev <env|api|name|index|check|files> [options]");
+    Console.Error.WriteLine("usage: rimdev <env|api|name|index|check|files> [options]（`rimdev check --help` 看 scan scope 语义）");
     return 3;
 }

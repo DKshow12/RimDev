@@ -83,7 +83,12 @@ public sealed class LoadFolderCheck : ICheck
                 "检查文件编码与 XML 良构性。DirectXmlLoader.ItemFromXmlFile 捕获异常后返回空 ModLoadFolders，"
                 + "因此 loadFolders 的全部声明（含 If* 条件）都会失效",
                 FileAbs: file, ModPackageId: packageId,
-                Evidence: new Dictionary<string, string> { ["kind"] = "loadFolders" }));
+                // ★ Task 2 Step 6：与 def 文件的 RD2001 用同一套 cause 口径（kind 用来区分两者）
+                Evidence: new Dictionary<string, string>
+                {
+                    ["kind"] = "loadFolders",
+                    ["cause"] = ParseCause.Classify(doc.ParseError),
+                }));
         }
 
         var supported = new HashSet<Version>();

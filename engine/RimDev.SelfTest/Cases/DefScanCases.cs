@@ -251,11 +251,19 @@ public static class DefScanCases
                 store.Save(scan, DefIndexStore.FingerprintAll(tfFiles), "active");
                 var m = store.LoadMeta();
                 T.NotNull(m, "meta 应可读回");
-                T.Eq(m!.SchemaVersion, 1, "schemaVersion");
+                // ★ 第 3 期 Task 2：schemaVersion 2 = 计数自洽三元组（字段名重命名 + 新增指纹条数）
+                T.Eq(m!.SchemaVersion, DefIndexStore.CurrentSchemaVersion, "schemaVersion");
                 T.Eq(m.Scope, "active", "scope 往返一致");
-                T.Eq(m.Files, scan.FilesScanned, "files 往返一致");
-                T.Eq(m.Failed, scan.FilesFailed, "failed 往返一致");
-                T.Eq(m.Defs, scan.Defs.Count, "defs 往返一致");
+                // ★ 字段名描述【实际动作】：filesEnumerated / fingerprintsRecorded / filesParsedOk /
+                //   filesSkippedUnchanged / filesParseFailed（旧的 files + failed 已随 schemaVersion 2 废弃）
+                T.Eq(m.FilesEnumerated, scan.FilesScanned, "filesEnumerated 往返一致");
+                T.Eq(m.FingerprintsRecorded, DefIndexStore.FingerprintAll(tfFiles).Count,
+                    "fingerprintsRecorded 往返一致（= 落盘时真的写进指纹表的条数）");
+                T.Eq(m.FilesParsedOk, scan.Files.Count(f => f.ParseError is null), "filesParsedOk 往返一致");
+                T.Eq(m.FilesSkippedUnchanged, 0, "全量重扫时 filesSkippedUnchanged 必须为 0");
+                T.Eq(m.FilesParseFailed, scan.FilesFailed, "filesParseFailed 往返一致");
+                T.Eq(m.DefsIndexed, scan.Defs.Count, "defsIndexed 往返一致");
+                T.True(m.SelfConsistent, $"三式自洽：{m.SelfConsistencyText}");
 
                 File.WriteAllText(store.MetaPath, "{ this is not json");
                 T.Null(store.LoadMeta(), "meta 损坏时应返回 null（不得抛异常）");

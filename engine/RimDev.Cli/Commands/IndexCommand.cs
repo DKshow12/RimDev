@@ -49,35 +49,89 @@ public static class IndexCommand
         var changed = diff.Changed;
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        // ★★ 第 3 期 Task 2 Step 3：**启动断言** —— 在决定「能不能用缓存」之前先把三式核一遍。
+        //   `xmlFiles == fingerprintsRecorded == filesParsedOk + filesSkippedUnchanged + filesParseFailed`
+        //   不成立就报 RD1004 并【拒绝使用缓存】（走全量重扫），而不是拿自相矛盾的索引作答。
+        var hadCache = store.Exists();
+        var cacheCheck = store.ValidateCache(files.Count);
+
         ScanResult scan;
-        // 是否走了缓存快路径——filesParsed / filesSkippedByCache 要靠它区分「实际动作」
-        var usedCache = changed.Count == 0 && diff.Removed.Count == 0 && store.Exists() && !rebuild;
+        // 自洽三元组的六个数字：描述【产出当前这份索引的那一次扫描】的真实动作
+        int scFiles, scFingerprints, scParsedOk, scSkippedUnchanged, scFailed, scVanished;
+        var usedCache = !rebuild && cacheCheck.Usable && changed.Count == 0 && diff.Removed.Count == 0;
         if (usedCache)
         {
-            // ★ 不能把 FilesFailed 硬编码成 0：上一次真扫描若有解析失败，这里会把
-            //   「解析失败 0」报出去——一个假的「全清」信号（与「只删不改走缓存」同属一类静默错答）。
-            //   从 index-meta.json 读回真实值（因此本 Task 要给 DefIndexStore 加 LoadMeta()）。
-            var meta = store.LoadMeta();
+            // ★ 不能把解析失败数硬编码成 0：缓存那一次真扫描的失败会被报成「解析失败 0」——
+            //   一个假的「全清」信号（与「只删不改走缓存」同属一类静默错答）。从 meta 读回真实值。
+            var meta = cacheCheck.Meta!;
             scan = new ScanResult(store.LoadDefs(), Array.Empty<DefFileResult>(), files.Count,
-                meta?.Failed ?? 0, 0);
+                meta.FilesParseFailed, 0);
+            scFiles = meta.FilesEnumerated;
+            scFingerprints = meta.FingerprintsRecorded;
+            scParsedOk = meta.FilesParsedOk;
+            scSkippedUnchanged = meta.FilesSkippedUnchanged;
+            scFailed = meta.FilesParseFailed;
+            scVanished = meta.FilesVanishedBeforeFingerprint;
         }
         else
         {
             // 简化增量：本期全量重扫，指纹用于判断"是否需要重扫"与统计
             scan = DefScanner.Scan(files);
-            store.Save(scan, DefIndexStore.FingerprintAll(files), scope.ToString().ToLowerInvariant());
+            var fps = DefIndexStore.FingerprintAll(files);
+            store.Save(scan, fps, scope.ToString().ToLowerInvariant());
+            scFiles = files.Count;
+            scFingerprints = fps.Count;
+            scParsedOk = scan.Files.Count(f => f.ParseError is null);
+            scSkippedUnchanged = 0;
+            scFailed = scan.FilesFailed;
+            // 枚举后被删、因而进不了指纹表的文件（活跃写入中的语料会偶发）
+            scVanished = scan.Files.Count(f => !fps.ContainsKey(f.FileAbs));
         }
         sw.Stop();
 
-        // ★ Task 5b：统计字段说真话。下面两个数描述的是「**本次实际做了什么**」，
-        //   不是「指纹 diff 判定了什么」——后者单独用 changedByFingerprint 报出。
+        var selfConsistent = scFiles == scFingerprints
+                             && scFiles == scParsedOk + scSkippedUnchanged + scFailed;
+        var selfConsistencyText =
+            $"files={scFiles} fingerprints={scFingerprints} "
+            + $"parsedOk+skippedUnchanged+parseFailed={scParsedOk}+{scSkippedUnchanged}+{scFailed}"
+            + $" (vanishedBeforeFingerprint={scVanished})";
+
+        var idx = DefIndex.Build(scan.Defs);
+
+        // ★ Task 5b / Task 2 统计字段说真话：下面两个数描述的是【本次实际做了什么】。
         //   修前的写法是 filesParsed = changed.Count / filesSkippedByCache = files.Count - changed.Count，
         //   在「仅因删除而拒绝缓存」时会严重误报：实测 removedFiles=71370（gate 正确拒绝缓存、
         //   确实全量重扫了 1649 个文件）同时 filesParsed=0——因为这种场景下 changed 恰好为 0。
-        var changedByFingerprint = changed.Count;
-        var filesParsed = usedCache ? 0 : files.Count;
-        var filesSkippedByCache = usedCache ? files.Count : 0;
-        var idx = DefIndex.Build(scan.Defs);
+        var filesParsedOkThisRun = usedCache ? 0 : scParsedOk;
+        var filesSkippedUnchangedThisRun = usedCache ? files.Count : 0;
+        var filesWithChangedFingerprint = changed.Count;
+        var cachedFilesMissingFromDisk = diff.Removed.Count;
+
+        // RD1004：三式不成立时优先报「本次/缓存扫描」的真实原因；否则报「缓存为何不可用」。
+        var cacheDiags = new List<Diagnostic>();
+        if (!selfConsistent)
+            cacheDiags.Add(new Diagnostic(Codes.CacheSchemaMismatch, Severity.Warning, Scope.Offline,
+                $"索引计数不自洽（RD1004）：{selfConsistencyText}",
+                "缓存已标为不可信（下一次 index 会拒绝它并重扫）。常见原因：枚举与取指纹之间文件被删（活跃写入中的语料）",
+                FileAbs: store.MetaPath,
+                Evidence: new Dictionary<string, string>
+                {
+                    ["reason"] = "三式不成立",
+                    ["files"] = scFiles.ToString(),
+                    ["fingerprints"] = scFingerprints.ToString(),
+                    ["parsedOk"] = scParsedOk.ToString(),
+                    ["skippedUnchanged"] = scSkippedUnchanged.ToString(),
+                    ["parseFailed"] = scFailed.ToString(),
+                    ["vanishedBeforeFingerprint"] = scVanished.ToString(),
+                }));
+        else if (hadCache && !cacheCheck.Usable)
+            cacheDiags.Add(new Diagnostic(Codes.CacheSchemaMismatch, Severity.Warning, Scope.Offline,
+                $"索引缓存不可用，已拒绝使用并全量重扫（RD1004）：{cacheCheck.Reason}",
+                "跑 `rimdev index --rebuild` 可显式重建；schemaVersion 升级后首次运行属预期行为",
+                FileAbs: store.MetaPath,
+                Evidence: new Dictionary<string, string> { ["reason"] = cacheCheck.Reason }));
+        var allDiags = build.Diagnostics.Concat(cacheDiags).ToList();
 
         if (json)
         {
@@ -89,22 +143,50 @@ public static class IndexCommand
                 cacheDir,
                 modsScanned = modList.Count,
                 candidateDirs = ModCatalog.EnumerateCandidates(env).Count(),
+                // ★ 第 3 期 Task 2（修 F3）：统计字段一律描述【实际动作】，不再用「判定输入」命名。
+                //   · xmlFiles                     = 本次磁盘枚举到的 XML 文件数（= 计划里的 `files`）
+                //   · filesParsedOk                = 本次真的重新读了并成功的文件数
+                //   · filesSkippedUnchanged        = 本次因为指纹一致而**没读**的文件数
+                //   · filesFailed                  = 产出当前索引的那一次扫描里，真的读了但失败的文件数
+                //   · filesWithChangedFingerprint  = 指纹判定为「变了」的文件数（判定输入，不是工作量）
+                //   · cachedFilesMissingFromDisk   = 缓存里有、本次输入已消失的文件数（检出，不是我们删的）
                 xmlFiles = files.Count,
-                filesParsed,
-                filesSkippedByCache,
-                // ★ 诊断口径：本次有多少文件被「指纹」判定为变更。它与 filesParsed 是两件事，
-                //   不可互相替代（仅因删除而拒绝缓存时 changed==0 但实际全量重扫）。
-                changedByFingerprint,
-                removedFiles = diff.Removed.Count,
-                filesFailed = scan.FilesFailed,
+                filesParsedOk = filesParsedOkThisRun,
+                filesSkippedUnchanged = filesSkippedUnchangedThisRun,
+                filesWithChangedFingerprint,
+                cachedFilesMissingFromDisk,
+                fingerprintsRecorded = scFingerprints,
+                filesVanishedBeforeFingerprint = scVanished,
+                filesFailed = scFailed,
+                // ★★ 自洽三式（Task 2 Step 3）：三个数必须相等，否则报 RD1004 并拒绝用缓存。
+                selfConsistency = new
+                {
+                    rule = "xmlFiles == fingerprintsRecorded == filesParsedOk + filesSkippedUnchanged + filesFailed",
+                    describes = usedCache ? "cache-producing-scan" : "this-scan",
+                    files = scFiles,
+                    fingerprints = scFingerprints,
+                    parsedOk = scParsedOk,
+                    skippedUnchanged = scSkippedUnchanged,
+                    parseFailed = scFailed,
+                    vanishedBeforeFingerprint = scVanished,
+                    holds = selfConsistent,
+                    detail = selfConsistencyText,
+                },
                 defsIndexed = idx.TotalDefs,
                 abstractDefs = idx.AbstractDefs,
                 typeCounts = idx.CountByType.OrderByDescending(kv => kv.Value).Take(20)
                     .ToDictionary(kv => kv.Key, kv => kv.Value),
                 // ★ 必须按 (DefType, defName) 判重：用 ByDefName 会报出 1202 条跨类型假重名（真值 1）
+                // ★ excludesAbstract（Task 2 Step 7 / F6 口径标注）：DefIndex.ByTypeAndDefName 只收录
+                //   **非抽象**声明（Abstract="True" 的节点不会被引擎建成 def）。必须随这个数字一起输出，
+                //   否则会与「把 defs.jsonl 全部行都算进去」的探针口径（全库实测 13195）差出几千条 ——
+                //   那个差不是缺陷，只是口径（分母在 Task 1 后也变了）。
                 duplicateDefNames = idx.ByTypeAndDefName.Count(kv => kv.Value.Count > 1),
+                excludesAbstract = true,
                 elapsedMs = sw.ElapsedMilliseconds,
-                diagnostics = build.Diagnostics.Select(d => new
+                peakWorkingSetMb = Math.Round(
+                    System.Diagnostics.Process.GetCurrentProcess().PeakWorkingSet64 / 1048576.0, 1),
+                diagnostics = allDiags.Select(d => new
                 {
                     code = d.Code, severity = d.Severity.ToString().ToLowerInvariant(), message = d.Message
                 })
@@ -116,14 +198,22 @@ public static class IndexCommand
         Console.WriteLine($"候选目录         {ModCatalog.EnumerateCandidates(env).Count()}");
         Console.WriteLine($"目录表 mod       {cat.All.Count}   （启用 {cat.Active.Count}）");
         Console.WriteLine($"本次扫描 mod     {modList.Count}");
-        Console.WriteLine($"XML 文件         {files.Count}   （本次解析 {filesParsed} / 缓存跳过 {filesSkippedByCache}）");
-        Console.WriteLine($"指纹判定变更     {changedByFingerprint}   （已删除 {diff.Removed.Count}）");
-        Console.WriteLine($"解析失败         {scan.FilesFailed}");
+        Console.WriteLine($"XML 文件         {files.Count}   （本次真读成功 {filesParsedOkThisRun} / 指纹一致跳过 {filesSkippedUnchangedThisRun}）");
+        Console.WriteLine($"指纹判定变更     {filesWithChangedFingerprint}   （缓存里有、本次输入已消失 {cachedFilesMissingFromDisk}）");
+        Console.WriteLine($"解析失败         {scFailed}");
         Console.WriteLine($"索引 def 总数    {idx.TotalDefs}   （抽象基类 {idx.AbstractDefs}）");
+        // ★ 计数自洽（Task 2 Step 3）：三式相等才说明「指纹表 / 计数器 / 磁盘集合」互不矛盾
+        Console.WriteLine($"计数自洽         {selfConsistent}   {selfConsistencyText}");
+        if (!usedCache && scVanished > 0)
+            Console.WriteLine($"   ★ 有 {scVanished} 个文件在「枚举」与「取指纹」之间消失（活跃写入中的语料），已计入不自洽");
         // ★ 必须按 (DefType, defName) 判重：用 ByDefName 会报出 1202 条跨类型假重名（真值 1）
-        Console.WriteLine($"defName 重名     {idx.ByTypeAndDefName.Count(kv => kv.Value.Count > 1)}");
+        Console.WriteLine($"defName 重名     {idx.ByTypeAndDefName.Count(kv => kv.Value.Count > 1)}   "
+                          + "（excludesAbstract=true：与「把全部声明都算上」的探针口径之差不是缺陷）");
         Console.WriteLine($"缓存目录         {cacheDir}");
-        Console.WriteLine($"耗时             {sw.ElapsedMilliseconds} ms");
+        Console.WriteLine($"耗时             {sw.ElapsedMilliseconds} ms   峰值工作集 "
+                          + $"{Math.Round(System.Diagnostics.Process.GetCurrentProcess().PeakWorkingSet64 / 1048576.0, 1)} MB");
+        foreach (var d in allDiags)
+            Console.WriteLine($"[{d.Code}] {d.Message}");
         Console.WriteLine();
         Console.WriteLine("Def 类型分布（前 12）：");
         foreach (var kv in idx.CountByType.OrderByDescending(k => k.Value).Take(12))

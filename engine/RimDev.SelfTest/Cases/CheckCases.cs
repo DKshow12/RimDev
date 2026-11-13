@@ -139,6 +139,35 @@ public static class CheckCases
                 (regressed.Count > 0 ? "（其中已知假阳回归：" + string.Join(", ", regressed) + "）" : ""));
         });
 
+        T.Case("★ Task 2 Step 8：官方 6 个包上跑【全部】默认规则 → error 必须 0（假阳比漏报更贵）", () =>
+        {
+            // 与 CLI 的 `rimdev check --scope active --only-official --severity error` 走同一条规则链，
+            // 只是把 mod 集合收窄到官方 6 个包。它是本期「零假阳」的机械保障：官方内容上出现的
+            // 任何一条 error 都先当成【我们的规则错了】来查（计划 §5 风险表）。
+            var officialMods = cat.Active.Where(m => m.Source == ModSource.Official).ToList();
+            var officialFiles = DefScanner.CollectFiles(
+                officialMods.Select(m => (m.PackageId, m.RootPath, (IReadOnlyList<string>)m.LoadFolders)));
+            var officialScan = DefScanner.Scan(officialFiles);
+            var offIdx = DefIndex.Build(officialScan.Defs);
+            var offCtx = new CheckContext(offIdx, officialScan.Files, cat, officialScan.Defs, null);
+            var offDiags = CheckRunner.Default().Run(offCtx);
+            var offErrs = offDiags.Where(d => d.Severity == Severity.Error).ToList();
+
+            Console.WriteLine($"       [官方零假阳] mod={officialMods.Count} files={officialFiles.Count} "
+                              + $"defs={officialScan.Defs.Count} failed={officialScan.FilesFailed} "
+                              + $"诊断={offDiags.Count}（error={offErrs.Count} / "
+                              + $"warning={offDiags.Count(d => d.Severity == Severity.Warning)} / "
+                              + $"info={offDiags.Count(d => d.Severity == Severity.Info)}）");
+            foreach (var d in offDiags.Take(20))
+                Console.WriteLine($"         {d.Severity} [{d.Code}] {Path.GetFileName(d.FileAbs ?? "?")}:{d.Line} {d.Message}");
+
+            T.Eq(officialMods.Count, 6, "官方包数（Core + 5 DLC）");
+            T.True(officialFiles.Count > 0, "官方文件数不得为 0（否则「0 error」是空谈）");
+            T.True(officialScan.Defs.Count > 10_000, $"官方 def 数应 > 10000，实际 {officialScan.Defs.Count}");
+            T.Eq(offErrs.Count, 0, "官方内容上 error 必须 0；命中：" + string.Join("; ",
+                offErrs.Take(10).Select(d => $"[{d.Code}] {Path.GetFileName(d.FileAbs ?? "?")}:{d.Line} {d.Message}")));
+        });
+
         T.Case("★ 防假阳③：active 全集上 RD4001 与 RD4005 都必须为 0（改前 126 + 12）", () =>
         {
             // 本用例就是 Task 7b 的核心判据的单元版：这两族错误改前 100% 落在原版/DLC/Anomaly 内容上，

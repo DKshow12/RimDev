@@ -78,3 +78,34 @@ public static class Codes
     // 目标 mod 无法确定（`01` §4 退出码 5 的对应码；`01` §7 的 RD1xxx 表已补此行）
     public const string TargetModNotFound = "RD1009";
 }
+
+// ===== 第 3 期 Task 2 =====
+/// <summary>
+/// RD2001（XML 解析失败）的**归因**取值 —— 让报告能区分「你的文件坏了」与「工具读不了」。
+///
+/// ★ 为什么要单独把它写成常量而不是散在字符串里：`failed` 单独一个数字无法回答
+///   「这些失败是我的 mod 有错，还是 RimDev 不认识这种编码」。第 3 期 Task 2 Step 6 要求
+///   每一个失败都带 cause，并且全库 13 条**全部**是 <see cref="Encoding"/>（实测，见验收记录）。
+/// </summary>
+public static class ParseCause
+{
+    /// <summary>文件自身的字节编码与 XML 声明/默认编码不符（GBK/无 BOM 等）⇒ 是**内容**问题。</summary>
+    public const string Encoding = "Encoding";
+
+    /// <summary>良构性错误（标签不配对、非法字符出现在名字里等）⇒ 同样是**内容**问题，但与编码无关。</summary>
+    public const string Structure = "Structure";
+
+    /// <summary>
+    /// 按 XmlException 的消息归因。判据只认「引擎自己说的那句话」（`Invalid character in the given encoding`）
+    /// 与 .NET 的 DecoderFallback 异常名，不做启发式猜测 —— 猜错会把「结构坏了」误报成「编码问题」，
+    /// 使用者会去改编码而永远修不好。
+    /// </summary>
+    public static string Classify(string? parseError)
+    {
+        if (string.IsNullOrEmpty(parseError)) return Structure;
+        if (parseError.Contains("encoding", StringComparison.OrdinalIgnoreCase)) return Encoding;
+        if (parseError.Contains("DecoderFallback", StringComparison.OrdinalIgnoreCase)) return Encoding;
+        if (parseError.Contains("byte order mark", StringComparison.OrdinalIgnoreCase)) return Encoding;
+        return Structure;
+    }
+}

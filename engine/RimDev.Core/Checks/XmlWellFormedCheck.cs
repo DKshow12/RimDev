@@ -15,12 +15,22 @@ public sealed class XmlWellFormedCheck : ICheck
             if (ctx.TargetModPackageId is not null && f.ModPackageId != ctx.TargetModPackageId) continue;
             if (f.ParseError is null) continue;
             if (f.CommentHasDoubleDash) continue;   // 交给 CommentDashCheck 报 RD2002
+            // ★ Task 2 Step 6 / F4：RD2001 必须能区分「你的文件坏了」与「工具读不了」。
+            //   实测全库 13 个失败**全部**是 Encoding（GBK/无 BOM 的字节 + 无编码声明）。
+            var cause = f.ParseCause ?? RimDev.Core.Diagnostics.ParseCause.Classify(f.ParseError);
             yield return new Diagnostic(
                 Codes.XmlParseFailed, Severity.Error, Scope.Offline,
-                $"XML 解析失败：{f.ParseError}",
-                "用严格解析器打开该文件核对；注意 XmlReader 的报错位置可能与真实问题行无关",
+                // ★ Task 2 Step 6：把 cause 写进消息**与** Evidence —— 前者给人看，后者给 --json 消费方。
+                $"XML 解析失败（cause={cause}）：{f.ParseError}",
+                "按 cause 区分：Encoding = 文件字节编码与 XML 声明/默认编码不符（是内容问题）；"
+                + "Structure = 良构性错误。注意 XmlReader 的报错位置可能与真实问题行无关",
                 FileAbs: f.FileAbs, Line: f.ErrorLine, Column: f.ErrorColumn,
-                ModPackageId: f.ModPackageId);
+                ModPackageId: f.ModPackageId,
+                Evidence: new Dictionary<string, string>
+                {
+                    ["cause"] = cause,
+                    ["rootKind"] = f.RootKind ?? "",
+                });
         }
     }
 }

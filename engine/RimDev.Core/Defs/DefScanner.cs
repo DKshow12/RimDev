@@ -1,4 +1,5 @@
 using System.Xml;
+using RimDev.Core.Diagnostics;
 
 namespace RimDev.Core.Defs;
 
@@ -10,7 +11,10 @@ public sealed record DefFileResult(
     int? ErrorLine,
     int? ErrorColumn,
     bool CommentHasDoubleDash,
-    string? RootKind = null);          // "Defs" | "Patch" | 其它根元素名
+    string? RootKind = null,             // "Defs" | "Patch" | 其它根元素名
+    // ★ 第 3 期 Task 2 Step 6：RD2001 的归因（Encoding | Structure）。
+    //   放在末尾且可选 = 向后兼容；`failed` 一个数字无法区分「内容坏」与「工具读不了」。
+    string? ParseCause = null);
 
 public sealed record ScanResult(
     IReadOnlyList<RawDef> Defs,
@@ -186,7 +190,8 @@ public static class DefScanner
         bool dash = false;
         if (parseError is not null) dash = CommentHasDoubleDash(fileAbs);
 
-        return new DefFileResult(fileAbs, modPackageId, defs, parseError, errLine, errCol, dash, rootKind);
+        return new DefFileResult(fileAbs, modPackageId, defs, parseError, errLine, errCol, dash, rootKind,
+            parseError is null ? null : ParseCause.Classify(parseError));
     }
 
     /// <summary>

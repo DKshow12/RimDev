@@ -27,8 +27,25 @@ public static class Facts
     public const int RealDuplicatePackageIdCount = 0;
     /// <summary>ModsConfig.xml 的 activeMods 条数。</summary>
     public const int ActiveModCount = 17;
-    /// <summary>启用集合里 Defs/Patches 的 XML 文件数。</summary>
-    public const int ActiveModXmlFileCount = 6340;
+    /// <summary>
+    /// 启用集合按 loadFolders 的 Defs+Patches 下的 *.xml 文件数。
+    ///
+    /// ★ 这是一个「mod 列表金丝雀」：数字变了通常意味着用户改了启用列表，而不是代码坏了。
+    ///   看到它失败时，先核对 ModsConfig.xml，再决定是否更新本常量。
+    ///
+    /// 更正记录（2026-10-14）：曾误记为 **6340** —— 那是我早期探针把 `&lt;mod&gt;\1.6\**\*.xml`
+    /// （含 Languages/DefInjected 等）也算进去了，而且从未用代码复现过。
+    /// 按「Defs+Patches」这个真正想要的语义，权威值是 **1649**（由 RimDev.Core 自己算出，
+    /// 并与独立枚举交叉验证；全库 `*\1.6\Defs\*.xml` 仍是 32694）。
+    /// </summary>
+    public const int ActiveModXmlFileCount = 1649;
     /// <summary>全库 *\1.6\Defs\*.xml 的文件数。</summary>
     public const int AllLibraryDefFileCount = 32694;
+    /// <summary>
+    /// ThreatFleet 的 XML 文件数与 def 数（2026-10-14 实测，**会随该 mod 日常开发而变化**）。
+    /// 仅用于报告与粗筛，**不作为精确断言**；防「静默丢 def」靠 DefScanCases 里的 DOM 逐文件对账。
+    /// 更正记录：计划里曾写「17 个 XML / 233 个 Def」，那是旧快照；现为 23 个 XML / 185 个 def。
+    /// </summary>
+    public const int ThreatFleetXmlFileCount = 23;
+    public const int ThreatFleetDefCount = 185;
 }

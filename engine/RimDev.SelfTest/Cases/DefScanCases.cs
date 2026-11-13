@@ -17,28 +17,55 @@ public static class DefScanCases
             .Select(m => (m.PackageId, m.RootPath, (IReadOnlyList<string>)m.LoadFolders))
             .ToList();
         var files = DefScanner.CollectFiles(inputs);
+        // 全量扫描只做一次（1649 文件，实测约 200 ms），供后续多条用例复用
+        var fullScan = DefScanner.Scan(files);
 
-        T.Case("★ 启用集合的文件数与实测锚点一致（6340）", () =>
+        T.Case("★ 启用集合的文件数与实测锚点一致（mod 列表金丝雀）", () =>
             T.Eq(files.Count, Facts.ActiveModXmlFileCount, "XML 文件数"));
 
         T.Case("流式扫描全部文件、耗时可控、失败数为 0", () =>
         {
-            var result = DefScanner.Scan(files);
-            T.Eq(result.FilesScanned, files.Count, "扫描文件数");
-            T.Eq(result.FilesFailed, 0, "解析失败文件数（期望 0）");
-            T.True(result.ElapsedMs < 120_000, $"扫描耗时 {result.ElapsedMs} ms");
+            T.Eq(fullScan.FilesScanned, files.Count, "扫描文件数");
+            T.Eq(fullScan.FilesFailed, 0, "解析失败文件数（期望 0）");
+            T.True(fullScan.ElapsedMs < 120_000, $"扫描耗时 {fullScan.ElapsedMs} ms");
         });
 
-        T.Case("★ ThreatFleet 的 def 数约为 233（历史实测 233 个 Def 节点）", () =>
+        T.Case("★ 扫描器产出与 DOM 真值逐文件一致（防静默丢 def）", () =>
         {
-            var tf = cat.Get("dsh.threatfleet.fragments")!;
-            var tfFiles = DefScanner.CollectFiles(
-                new[] { (tf.PackageId, tf.RootPath, (IReadOnlyList<string>)tf.LoadFolders) });
-            var r = DefScanner.Scan(tfFiles);
-            T.Eq(r.FilesFailed, 0, "ThreatFleet 解析失败数");
-            // 历史记录：17 个 XML / 233 个 Def 节点。留 ±5% 余量以容忍文档与磁盘不同步。
-            var n = r.Defs.Count;
-            T.True(n >= 221 && n <= 245, $"ThreatFleet def 数 = {n}（历史锚点 233，允许 ±5%）");
+            // 这条取代了原先的「def 数 ≈ 233」魔法数字。它有两个好处：
+            //  ① 直接盯住最贵的那类错——**静默丢 def**（不报错、不变红，但索引里少东西）；
+            //  ② 不会因为 ThreatFleet 日常增删内容而误报。
+            // 实测背景：初版 DefScanner 用 ReadElementContentAsString 读 <defName> 时，
+            //   会把 def 自己的结束标签一起消费掉；当 <defName> 是最后一个子元素时（原版大量 def 正是这个形状），
+            //   该 def 被静默丢弃。修后用本对账验证：domTotal=14480 / mismatchedFiles=0。
+            int domTotal = 0, mismatched = 0;
+            var details = new List<string>();
+            foreach (var f in files)
+            {
+                int dom = 0;
+                try
+                {
+                    var doc = new System.Xml.XmlDocument { XmlResolver = null };
+                    doc.Load(f.FileAbs);
+                    var root = doc.DocumentElement;
+                    if (root?.Name == "Defs")
+                        foreach (System.Xml.XmlNode n in root.ChildNodes)
+                            if (n.NodeType == System.Xml.XmlNodeType.Element) dom++;
+                }
+                catch { continue; }   // 解析失败的文件由 RD2001 处理，这里不重复计入
+
+                domTotal += dom;
+                var got = fullScan.Defs.Count(x => x.FileAbs == f.FileAbs);
+                if (dom != got)
+                {
+                    mismatched++;
+                    if (details.Count < 5) details.Add($"{Path.GetFileName(f.FileAbs)}: dom={dom} scan={got}");
+                }
+            }
+
+            T.True(mismatched == 0,
+                $"有 {mismatched} 个文件的 def 数与 DOM 真值不一致（domTotal={domTotal}）：{string.Join("; ", details)}");
+            T.Eq(fullScan.Defs.Count, domTotal, "扫描器 def 总数 vs DOM 真值总数");
         });
 
         T.Case("def 头带行号与来源文件", () =>

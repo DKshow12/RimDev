@@ -55,6 +55,12 @@ public sealed class MemberInfoIndex
     private readonly Dictionary<string, PropertyInfo> _properties;
     private readonly Dictionary<string, List<MethodInfo>> _methods;
 
+    // ★★ 第 3 期 Task 2c 新增：RD4001 的两条抑制条件所需的表。
+    //   ① 别名表（LoadAliasAttribute）—— 键是别名，比较 OrdinalIgnoreCase；
+    //   ④ 类型级 IgnoreSavedElementAttribute 的 elementToIgnore 列表。
+    private readonly Dictionary<string, FieldInfo> _aliasFields;
+    private readonly IReadOnlyList<string> _ignoreSavedElements;
+
     public MemberInfoIndex(Type type)
     {
         _type = type;
@@ -66,6 +72,35 @@ public sealed class MemberInfoIndex
 
         _properties = new Dictionary<string, PropertyInfo>(StringComparer.Ordinal);
         _methods = new Dictionary<string, List<MethodInfo>>(StringComparer.Ordinal);
+
+        // ★★ 第 3 期 Task 2c：别名表 —— **照引擎实现，刻意不合并基类**。
+        //
+        //   引擎原文（Verse.XmlToObjectUtils.DoFieldSearch，逐行 + IL 双证据）：
+        //     FieldInfo[] fields = typeBeingDeserialized.GetFields(
+        //         BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);   ← 单次调用，无 BaseType 循环
+        //     foreach (var fieldInfo in fields)
+        //       foreach (var a in fieldInfo.GetCustomAttributes<LoadAliasAttribute>(inherit: true))
+        //         if (a.alias.EqualsIgnoreCase(name)) { value = fieldInfo; break; }
+        //
+        //   ★ 这个「单次 GetFields」与上面 _fields 用的 FieldReflection.FieldsByName（沿 BaseType 逐层 DeclaredOnly
+        //     求并集）是**刻意不同**的两套规则，不是漏写：
+        //       · 直接按名查找走 DirectGetFieldByName → SearchTypeHierarchy，后者**显式沿 BaseType 循环**，
+        //         所以看得见基类 private 字段 —— 这正是 _fields 必须求并集的原因；
+        //       · 别名查找**没有**那层循环，单次 GetFields **不返回基类 private 字段**。
+        //     照引擎实现意味着：某个只以「基类 private 字段」形式存在且带 [LoadAlias] 的字段，引擎自己也匹配不到
+        //     ⇒ 我们也不匹配。若擅自合并基类，就会比引擎多抑制 RD4001 = 造出**漏报**（放宽判据）。
+        //   实测（1.6.4871 rev591，全程序集 16157 个类型）：41 个字段带 [LoadAlias]，**全部是 public 实例字段**，
+        //     所以两套规则在当前语料上结果相同；差异只会在「未来原版把 [LoadAlias] 加到 private 字段」时显现。
+        //   比较口径：引擎用 GenText.EqualsIgnoreCase = string.Compare(A, B, ignoreCase: true)（当前区域性）；
+        //     字段名/别名都是 ASCII 标识符，Ordinal 与区域性在 ASCII 上等价，这里用 OrdinalIgnoreCase 以免
+        //     静态分析结果随机器区域性漂移。
+        _aliasFields = new Dictionary<string, FieldInfo>(StringComparer.OrdinalIgnoreCase);
+        foreach (var f in type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+            foreach (var alias in RimWorldAttributes.LoadAliases(f))
+                _aliasFields.TryAdd(alias, f);   // 先到者胜 = 与引擎「遇到第一个命中就 break」同序
+
+        // ★ 抑制条件④的类型级半边：IgnoreSavedElementAttribute（AllowMultiple = true，inherit: true）。
+        _ignoreSavedElements = RimWorldAttributes.IgnoreSavedElements(type);
 
         foreach (var p in type.GetProperties(PropertyFlags))
             _properties.TryAdd(p.Name, p);
@@ -118,6 +153,34 @@ public sealed class MemberInfoIndex
 
     public FieldInfo? FindField(string name) => _fields.GetValueOrDefault(name);
     public PropertyInfo? FindProperty(string name) => _properties.GetValueOrDefault(name);
+
+    /// <summary>
+    /// 按【字段别名】查字段 —— 引擎 <c>DoFieldSearch</c> 的第二个分支（直接按名查找失败之后）。
+    ///
+    /// 命中 ⇒ 引擎照样把 XML 的值填进该字段 ⇒ 静态检查**不许**报 RD4001。
+    /// 实测的别名语料（1.6.4871 rev591，全程序集）：41 个字段 / 26 个类型 / 28 个别名，
+    /// 例如 <c>PawnKindDef.defaultFactionDef</c> 带 <c>[LoadAlias("defaultFactionType")]</c>、
+    /// <c>StyleItemDef.styleGender</c> 带 <c>[LoadAlias("hairGender")]</c>、
+    /// <c>StyleItemDef.styleTags</c> 带 <c>[LoadAlias("hairTags")]</c> —— 这些「旧名」引擎全都认。
+    /// </summary>
+    public FieldInfo? FindFieldByAlias(string name) => _aliasFields.GetValueOrDefault(name);
+
+    /// <summary>别名表条数（一个字段有多个别名就算多条）。自测用它钉住「照引擎的别名语料」。</summary>
+    public int AliasCount => _aliasFields.Count;
+
+    /// <summary>该类型声明要忽略的元素名（<c>IgnoreSavedElementAttribute.elementToIgnore</c>）。</summary>
+    public IReadOnlyList<string> IgnoreSavedElements => _ignoreSavedElements;
+
+    /// <summary>
+    /// 抑制条件④的类型级半边：元素名是否等于某个 <c>elementToIgnore</c>。
+    /// 引擎用 <c>string.Equals(elementToIgnore, name, StringComparison.OrdinalIgnoreCase)</c>。
+    /// </summary>
+    public bool IgnoresSavedElement(string name)
+    {
+        foreach (var e in _ignoreSavedElements)
+            if (string.Equals(e, name, StringComparison.OrdinalIgnoreCase)) return true;
+        return false;
+    }
     public IReadOnlyList<MethodInfo> FindMethods(string name) =>
         _methods.TryGetValue(name, out var l) ? l : Array.Empty<MethodInfo>();
 

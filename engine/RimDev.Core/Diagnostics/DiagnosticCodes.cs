@@ -28,6 +28,31 @@ public static class Codes
     // RD9xxx 反模式规则包（v1 只实现可离线判定的成员相关项）
     public const string CustomXmlLoaderInfo = "RD4008";
 
+    /// <summary>
+    /// 字段标了 <c>[Unsaved]</c> 且 <c>allowLoading == false</c>，而 XML 写了它 —— 引擎会
+    /// <c>Log.Error("XML error: … corresponds to a field in type … which has an Unsaved attribute. Context: …")</c>
+    /// 并返回 null（第 3 期 Task 2c 落地；<c>Docs\01 §7</c> 的 RD4009）。
+    ///
+    /// ★★ 必须记住的可达性事实（反编译 + IL 双证据，**推翻了任务书对该分支的表述**）：
+    ///   <c>Verse.XmlToObjectUtils.DoFieldSearch</c> 里 <c>DirectGetFieldByName</c> 命中时**立即 return**，
+    ///   <c>[Unsaved]</c> 检查在其**之后**、只在**别名分支命中**时才可达
+    ///   （IL: 0x0010 brfalse → 0x0019 ret；0x00BC 才是 `TryGetAttribute&lt;UnsavedAttribute&gt;()`）。
+    ///   而原版程序集 41 个别名字段里**没有一个是 [Unsaved]**（实测 0/41）⇒ 在原版类型上这条错误
+    ///   **永远发不出来**。若照「任何 [Unsaved(false)] 字段被写到就报」实现，会造出成千上万条引擎不会报的假阳。
+    ///   全库实测 RD4009 = 0，原因就是这个可达性，不是漏实现。
+    /// </summary>
+    public const string UnsavedFieldBlocked = "RD4009";
+
+    /// <summary>
+    /// 元素名无对应字段，但该元素带 <c>IgnoreIfNoMatchingField="True"</c>（InvariantCultureIgnoreCase），
+    /// 或所属类型带 <c>IgnoreSavedElementAttribute</c> 且 <c>elementToIgnore</c> 命中
+    /// （OrdinalIgnoreCase）—— 引擎**故意不打**那条 <c>doesn't correspond to any field</c>。
+    ///
+    /// 所以这里报 **info** 并单列计数（RD4001 会算 error，两者的报告语义不同），
+    /// evidence 的 <c>suppressedBy</c> 区分 <c>elementAttribute</c> / <c>typeAttribute</c>。
+    /// </summary>
+    public const string MissingFieldSuppressed = "RD4010";
+
     // ===== 第 2 期 =====
     // RD2xxx Def 结构与加载
     public const string XmlParseFailed = "RD2001";

@@ -128,10 +128,14 @@ public static class Phase3Task2bCases
         // ============ 回归钉子③：原版元素名 + 真不存在字段 → 仍 RD4001 ============
         T.Case("★ 回归钉子③：原版元素名 + 真不存在字段 → 仍然 RD4001(error)（不许为降数字放宽）", () =>
         {
-            // 三路验证过的事实（反射 + 官方先例）：
-            //  · ThingDef.renderNodeProperties：**无字段无属性**（它只在 Verse.HediffDef / GeneDef 等类型上）
-            //  · PawnKindDef.defaultFactionType：**全程序集 0 个类型有它**（1.6 的正确名是 defaultFactionDef；
-            //    官方 Data 里 defaultFactionDef 65 处 / defaultFactionType 0 处）
+            // ★ 第 3 期 Task 2c 校准：原钉子之一被证伪，已换成本 Task 指定的两个钉子。
+            //  · ThingDef.renderNodeProperties —— 反射确认 ThingDef 链（ThingDef < BuildableDef < Def < Editable）
+            //    既无该字段、也无该别名 ⇒ 引擎必报 error。**保留**（本 Task 指定的钉子之一）。
+            //  · HediffDef.uiIconPath —— uiIconPath 只声明在 BuildableDef 上（ThingDef 继承它、HediffDef 不继承），
+            //    HediffDef 链（HediffDef < Def < Editable）无它 ⇒ 必报 error（全库 24 条真错）。**新增钉子**。
+            //  · 原钉子 PawnKindDef.defaultFactionType **已被反射证据证伪**：PawnKindDef.defaultFactionDef 带
+            //    [LoadAlias("defaultFactionType")]，引擎认这个旧名 ⇒ 它根本不是 error（全库 2565 条属假阳）。
+            //    该断言已删除，改由 Phase3Task2cCases 的「别名抑制」用例从正面钉住。
             var d = RunFieldCheck("c.xml", """
                 <?xml version="1.0" encoding="utf-8"?>
                 <Defs>
@@ -141,10 +145,10 @@ public static class Phase3Task2bCases
                       <li><nodeClass>SomeNode</nodeClass></li>
                     </renderNodeProperties>
                   </ThingDef>
-                  <PawnKindDef>
-                    <defName>SynBadKind</defName>
-                    <defaultFactionType>Spacer</defaultFactionType>
-                  </PawnKindDef>
+                  <HediffDef>
+                    <defName>SynBadHediff</defName>
+                    <uiIconPath>Things/Bad</uiIconPath>
+                  </HediffDef>
                 </Defs>
                 """);
             Print(d, "回归钉子③");
@@ -152,7 +156,7 @@ public static class Phase3Task2bCases
             T.Eq(r4001.Count, 2, "两条都必须仍是 RD4001 error，实际：" + r4001.Count);
             T.True(r4001.All(x => x.Severity == Severity.Error), "RD4001 必须是 error 级");
             T.True(r4001.Any(x => x.Message.Contains("renderNodeProperties", StringComparison.Ordinal)), "应含 renderNodeProperties");
-            T.True(r4001.Any(x => x.Message.Contains("defaultFactionType", StringComparison.Ordinal)), "应含 defaultFactionType");
+            T.True(r4001.Any(x => x.Message.Contains("uiIconPath", StringComparison.Ordinal)), "应含 uiIconPath");
             T.True(r4001.All(x => x.Evidence!["resolutionSource"] == "elementName"), "这两条来自元素名路径");
         });
 

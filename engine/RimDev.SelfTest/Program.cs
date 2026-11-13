@@ -12,4 +12,6 @@ LoadFolderCases.Run();
 Phase3Task2Cases.Run();
 // ★ 第 3 期 Task 2b：RD4001 的两条假阳机制（Class= 优先 / 含 '.' 不退化简单名）+ ParentChainCheck 提速等价性
 Phase3Task2bCases.Run();
+// ★ 第 3 期 Task 2c：DoFieldSearch 的另外三条分支（别名 / [Unsaved] / 抑制）与两条回归钉子
+Phase3Task2cCases.Run();
 return T.Report();

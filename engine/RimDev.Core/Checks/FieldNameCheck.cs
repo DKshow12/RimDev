@@ -33,6 +33,17 @@ namespace RimDev.Core.Checks;
 /// </summary>
 public sealed class FieldNameCheck : ICheck
 {
+    // ★★ 第 3 期 Task 2c：本规则现在建模引擎 DoFieldSearch 的**全部五条分支**（缺任一条都会造假阳或漏报）：
+    //   ① 直接按名命中（先大小写敏感，再大小写不敏感；后者引擎会 Log.Error「xml tags are now case-sensitive」⇒ 我们报 RD4005）；
+    //   ② 字段别名 LoadAliasAttribute（EqualsIgnoreCase）⇒ 命中即**不报** RD4001；
+    //   ②' 别名命中后若字段带 [Unsaved] 且 allowLoading=false ⇒ 引擎 Log.Error 并返回 null ⇒ RD4009(error)。
+    //       ★ 可达性（逐行 + IL 实证）：直接命中会**提前 return**，所以 [Unsaved] 检查**只在别名路径上**可达；
+    //         原版 41 个别名字段里 0 个带 [Unsaved]，故全库 RD4009 = 0（不是漏实现）。
+    //   ④ ①②都没命中时：元素属性 IgnoreIfNoMatchingField="true"（InvariantCultureIgnoreCase），
+    //      或类型属性 IgnoreSavedElementAttribute.elementToIgnore 命中（OrdinalIgnoreCase）
+    //      ⇒ 引擎**故意不打**那条 doesn't correspond to any field ⇒ 我们报 RD4010(info)，**不报** RD4001；
+    //   ⑤ 全不成立 ⇒ 引擎真的 Log.Error ⇒ RD4001(error)。
+    //   元素属性由本类的元素扫描层采集（ScanTopLevelElements —— 原来只取元素名与行号、丢掉属性）。
     public string Id => Codes.FieldNotFound;
 
     public IEnumerable<Diagnostic> Run(CheckContext ctx)
@@ -82,12 +93,93 @@ public sealed class FieldNameCheck : ICheck
                 if (!elementsByDefLine.TryGetValue(d.Line, out var elements)) continue;
                 var members = catalog.MembersOf(type);
 
-                foreach (var (elementName, line) in elements)
+                foreach (var (elementName, line, ignoreIfNoMatchingField) in elements)
                 {
                     if (elementName is "defName" or "ParentName" or "Name" or "Abstract" or "MayRequire") continue;
+
+                    // ═══ ① 直接按名命中（引擎 DirectGetFieldByName）⇒ 引擎直接 return，什么都不报。
                     if (members.FindField(elementName) is not null) continue;
+
+                    // ═══ ② 字段别名（引擎 DoFieldSearch 的第二个分支）—— RD4001 的第二条抑制条件。
+                    //   实测语料（1.6.4871 rev591）；41 个字段 / 26 个类型 / 28 个别名，例如
+                    //   PawnKindDef.defaultFactionDef 带 [LoadAlias("defaultFactionType")]
+                    //   ⇒ <defaultFactionType> 引擎照收（全库 2565 条 RD4001 属这类假阳）。
+                    if (members.FindFieldByAlias(elementName) is { } aliasField)
+                    {
+                        // 引擎在【别名分支之后】才检查 [Unsaved]：直接命中会提前 return，根本走不到这段
+                        // （IL: 0x0010 brfalse → 0x0019 ret；0x00BC 才是 TryGetAttribute<UnsavedAttribute>()）。
+                        // 而原版 41 个别名字段里 0 个带 [Unsaved] ⇒ 这条在原版类型上恒不触发；但它是引擎
+                        // **真会 Log.Error 并丢弃值**的一类，必须留着（mod 类型将来会有）。
+                        if (RimWorldAttributes.TryGetUnsavedAllowLoading(aliasField, out var allowLoading)
+                            && !allowLoading)
+                        {
+                            yield return new Diagnostic(Codes.UnsavedFieldBlocked, Severity.Error, Scope.Offline,
+                                $"{typeName} 的字段 `{aliasField.Name}` 带 [Unsaved]（allowLoading=false），"
+                                + $"而 XML 用它的别名 `{elementName}` 写了值；引擎会报错并丢弃该值",
+                                "删掉该元素；[Unsaved] 由 C# 类型定义决定，XML 侧改不掉",
+                                FileAbs: d.FileAbs, Line: line,
+                                ModPackageId: d.ModPackageId, DefName: d.DefName, DefType: d.DefType,
+                                Evidence: new Dictionary<string, string>
+                                {
+                                    ["defTypeFullName"] = type.FullName ?? type.Name,
+                                    ["validatedTypeName"] = typeName,
+                                    ["resolutionSource"] = d.ClassAttr is null ? "elementName" : "ClassAttribute",
+                                    ["matchedBy"] = "alias",
+                                    ["alias"] = elementName,
+                                    ["fieldName"] = aliasField.Name,
+                                    ["fieldDeclaringType"] = aliasField.DeclaringType?.FullName ?? "(unknown)",
+                                    ["fieldType"] = aliasField.FieldType.Name,
+                                    ["allowLoading"] = "false"
+                                });
+                        }
+                        // 别名命中 ⇒ 引擎把值填进 aliasField ⇒ **不许**报 RD4001。
+                        continue;
+                    }
+
                     if (members.FindProperty(elementName) is not null) continue;
 
+                    // ═══ ④ 抑制（引擎的 flag 分支）：引擎**故意不打**那条 doesn't correspond to any field。
+                    //   引擎原文：先看元素属性 IgnoreIfNoMatchingField 是否等于 "true"
+                    //   （StringComparison.InvariantCultureIgnoreCase）；不成立再看**类型属性**
+                    //   IgnoreSavedElementAttribute.elementToIgnore 是否等于元素名（OrdinalIgnoreCase）。
+                    string? suppressedBy = null;
+                    string? suppressedDetail = null;
+                    if (ignoreIfNoMatchingField is not null
+                        && ignoreIfNoMatchingField.Equals("true", StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        suppressedBy = "elementAttribute";
+                        suppressedDetail = ignoreIfNoMatchingField;
+                    }
+                    else if (members.IgnoresSavedElement(elementName))
+                    {
+                        suppressedBy = "typeAttribute";
+                        suppressedDetail = elementName;
+                    }
+                    if (suppressedBy is not null)
+                    {
+                        yield return new Diagnostic(Codes.MissingFieldSuppressed, Severity.Info, Scope.Offline,
+                            $"{typeName} 上没有字段 `{elementName}`，但"
+                            + (suppressedBy == "elementAttribute"
+                                ? "该元素带 IgnoreIfNoMatchingField，"
+                                : "所属类型声明了 IgnoreSavedElementAttribute，")
+                            + "引擎据此**故意不报**（因此不计入 RD4001）",
+                            suppressedBy == "elementAttribute"
+                                ? "跨版本兼容写法：引擎不报错，但该元素的值会被静默忽略"
+                                : "类型级忽略：引擎不报错，但该元素的值会被静默忽略",
+                            FileAbs: d.FileAbs, Line: line,
+                            ModPackageId: d.ModPackageId, DefName: d.DefName, DefType: d.DefType,
+                            Evidence: new Dictionary<string, string>
+                            {
+                                ["suppressedBy"] = suppressedBy,
+                                ["suppressedDetail"] = suppressedDetail,
+                                ["defTypeFullName"] = type.FullName ?? type.Name,
+                                ["validatedTypeName"] = typeName,
+                                ["resolutionSource"] = d.ClassAttr is null ? "elementName" : "ClassAttribute"
+                            });
+                        continue;
+                    }
+
+                    // ═══ ⑤ 三条分支全不成立 ⇒ 引擎真的 Log.Error（我们报 RD4001 / RD4005）。
                     var suggestions = members.Suggest(elementName, 5);
                     var caseOnly = suggestions.FirstOrDefault(s => string.Equals(s, elementName, StringComparison.OrdinalIgnoreCase));
                     yield return new Diagnostic(
@@ -149,29 +241,39 @@ public sealed class FieldNameCheck : ICheck
     /// 这是「每个文件只读一次」的落点：文件打开一次，元素按行号归属到对应 def。
     /// 归属依据是「depth==1 的元素起始行 == RawDef.Line」，与 DefScanner 的行号口径完全一致。
     /// </summary>
-    public static Dictionary<int, List<(string Name, int Line)>> ReadElementsByDef(string fileAbs)
+    public static Dictionary<int, List<(string Name, int Line, string? IgnoreIfNoMatchingField)>> ReadElementsByDef(string fileAbs)
     {
-        var byDefLine = new Dictionary<int, List<(string Name, int Line)>>();
-        foreach (var (defLine, name, line) in ScanTopLevelElements(fileAbs))
+        var byDefLine = new Dictionary<int, List<(string Name, int Line, string? IgnoreIfNoMatchingField)>>();
+        foreach (var (defLine, name, line, ignoreAttr) in ScanTopLevelElements(fileAbs))
         {
             if (!byDefLine.TryGetValue(defLine, out var l))
-                byDefLine[defLine] = l = new List<(string, int)>();
-            l.Add((name, line));
+                byDefLine[defLine] = l = new List<(string, int, string?)>();
+            l.Add((name, line, ignoreAttr));
         }
         return byDefLine;
     }
 
-    /// <summary>读某个 def（从 startLine 起）的一级子元素名与行号。只读该文件一次。</summary>
-    public static List<(string Name, int Line)> ReadTopLevelElements(string fileAbs, int startLine) =>
+    /// <summary>读某个 def（从 startLine 起）的一级子元素名/行号/抑制属性。只读该文件一次。</summary>
+    public static List<(string Name, int Line, string? IgnoreIfNoMatchingField)> ReadTopLevelElements(string fileAbs, int startLine) =>
         ScanTopLevelElements(fileAbs)
             .Where(x => x.DefLine == startLine)
-            .Select(x => (x.Name, x.Line))
+            .Select(x => (x.Name, x.Line, x.IgnoreIfNoMatchingField))
             .ToList();
 
-    /// <summary>底层单遍扫描：返回 (def 起始行, 一级子元素名, 元素行号)。</summary>
-    private static List<(int DefLine, string Name, int Line)> ScanTopLevelElements(string fileAbs)
+    /// <summary>
+    /// 底层单遍扫描：返回 (def 起始行, 一级子元素名, 元素行号, IgnoreIfNoMatchingField 属性值)。
+    ///
+    /// ★★ 第 3 期 Task 2c 的**采集侧改动就在这一层**：原实现只取元素名与行号、**丢掉了属性**，
+    ///   而 RD4010（抑制条件④）判的恰恰是元素属性 <c>IgnoreIfNoMatchingField</c>。
+    ///   只补这一层用得到的属性，不动其它层：
+    ///     · def 元素自身（depth==1）用得到的 <c>Class=</c> 已由 DefScanner 收进 RawDef（Task 2b）；
+    ///       而且引擎**从不**把 def 元素本身当 fieldNode 传给 DoFieldSearch（fieldNode 永远是
+    ///       `xmlRoot.ChildNodes[i]`），所以 def 元素上的 IgnoreIfNoMatchingField 语义上根本无效。
+    ///     · depth&gt;=3 的更深元素不在本规则范围内（多态节点内层字段是另一个 Task），不采集。
+    /// </summary>
+    private static List<(int DefLine, string Name, int Line, string? IgnoreIfNoMatchingField)> ScanTopLevelElements(string fileAbs)
     {
-        var list = new List<(int, string, int)>();
+        var list = new List<(int, string, int, string?)>();
         try
         {
             using var stream = File.OpenRead(fileAbs);
@@ -191,7 +293,7 @@ public sealed class FieldNameCheck : ICheck
                     continue;
                 }
                 if (reader.Depth == 2 && defLine >= 0)
-                    list.Add((defLine, reader.Name, line));
+                    list.Add((defLine, reader.Name, line, reader.GetAttribute("IgnoreIfNoMatchingField")));
             }
         }
         catch { /* 解析失败由 RD2001 报告 */ }

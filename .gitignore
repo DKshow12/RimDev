@@ -25,3 +25,11 @@ tools/**/obj/
 #   生成方式：pwsh -File engine\publish.ps1
 #   与 tools/**/bin 同理：构建产物忽略，生成脚本必须入库。
 dist/
+
+# ★ Windows 保留设备名：git credential fill 在无凭据时会尝试交互提示，
+#   MSYS 把 CON 当输出设备 ⇒ 留下一个 35 字节的 "Username for ..." 垃圾文件。
+#   这不是我们的源码，永久忽略。
+CON
+NUL
+AUX
+PRN

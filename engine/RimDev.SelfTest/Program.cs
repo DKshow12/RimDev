@@ -52,6 +52,11 @@ if (args.Contains("--task9b-cases"))
 }
 // ★ 第 3 期 Task 9c：按需入口 `rimdev-selftest --task9c-cases`（只跑本 Task 的用例，约十秒 ——
 //   其中 index/files/check×2/sim 各一次真扫描）。
+if (args.Contains("--task12-cases"))
+{
+    T.RunFile("phase3-task12", Phase3Task12Cases.Run);
+    return T.Report();
+}
 if (args.Contains("--task11-cases"))
 {
     // ★ 独立入口：跳过其他组（它们在 641 mod 语料下要跑很久），只跑 task11 的判别性用例。
@@ -134,5 +139,7 @@ T.RunFile("phase3-task9b", Phase3Task9bCases.Run);
 T.RunFile("phase3-task9c", Phase3Task9cCases.Run);
 // ★ 第 3 期 Task 11：引用方 mod 未启用 ⇒ RD3001 降级为 info（全库 3971 条里 3256 条是这类假阳）
 T.RunFile("phase3-task11", Phase3Task11Cases.Run);
+// ★ 第 3 期 Task 12：补丁层三态（跳过 ≠ 失败），防 Sequence 因自定义 Class 而提前中止
+T.RunFile("phase3-task12", Phase3Task12Cases.Run);
 
 return T.Report();

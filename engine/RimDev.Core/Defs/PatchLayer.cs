@@ -17,6 +17,28 @@ public enum PatchOpKind
 }
 
 /// <summary>
+/// ★ 第 3 期 Task 12（补丁层三态）：一个操作的求值结果，区分「成功 / 失败 / <b>未知</b>」。
+///
+/// 为什么需要第三态（这是本 Task 的核心）：
+/// <list type="bullet">
+/// <item>引擎里自定义 <c>Class=</c> 的补丁类是<b>真执行</b>的，返回值取决于 mod 代码；</item>
+/// <item>本工具不执行 mod 代码（诚实边界）⇒ 真值 <b>未知</b>，不是 false。</item>
+/// </list>
+/// 把 <c>Unknown</c> 当作 <c>false</c> 会让父 <c>Sequence</c> 提前中止后续兄弟操作 —— 那些操作在引擎里可能是真执行的，
+/// 于是在 Sequence 后半段刷出<b>成片假阳 RD2009</b>。本实现：<c>Unknown</c> 不终止 Sequence（继续往下走），
+/// 但把「该 Sequence 的结果也是未知」记下来，并单独计数。
+/// </summary>
+public enum ApplyResult
+{
+    /// <summary>引擎 <c>Apply()</c> 返回 true（含 <c>&lt;success&gt;Always</c> 翻转）。</summary>
+    Succeeded,
+    /// <summary>引擎 <c>Apply()</c> 返回 false。</summary>
+    Failed,
+    /// <summary>本工具无法判定（自定义 Class= / 缺 Class=），需真机验证。</summary>
+    Unknown,
+}
+
+/// <summary>
 /// 各阶段的节点数 —— <b>Step 1「时序复刻必须实测」的载体</b>。
 ///
 /// 阶段序（`Verse.LoadedModManager.LoadAllActiveMods`，2026-10-14 反编译逐行，非注释转写）：
@@ -83,7 +105,15 @@ public sealed record PatchOutcome(
     bool Skipped,
     string? SkipReason,
     // 求值异常（如 XPath 语法错）；null = 正常。
-    string? EvaluationError = null);
+    string? EvaluationError = null,
+    // ★ Task 12：三态结果。</summary>
+    // 为什么不直接把 Applied 改成枚举：Applied 已有外部消费者（CLI / 旧自测），
+    // 改类型会静默改变它们的语义。新增一个字段、给默认值，保证向后兼容。
+    //   Applied   = 沿用旧语义（Unknown 时为 false，不可当成「已失败」读）
+    //   Result    = 真三态，想区分「失败」与「未知」的消费者用这个
+    ApplyResult Result = ApplyResult.Succeeded,
+    // ★ Task 12：若本操作是 Sequence 且因首败中止，这里是被跳过的兄弟操作数。
+    int SkippedFollowups = 0);
 
 /// <summary>
 /// 补丁给某个 def 补上的 <c>Name</c> 属性（<c>PatchOperationAttributeAdd</c> + <c>&lt;attribute&gt;Name&lt;/attribute&gt;</c>）。
@@ -388,11 +418,32 @@ public static class PatchLayer
         }
 
         /// <summary>
+        /// ★ Task 12：三态求值。<b>Sequence/Conditional 必须调这个</b>，否则「未知」会被当成「失败」。
+        /// </summary>
+        public ApplyResult ApplyElementTri(XmlElement op, bool nested, out int skippedFollowups)
+        {
+            skippedFollowups = 0;
+            var r = ApplyCore(op, nested, out skippedFollowups);
+            return r;
+        }
+
+        /// <summary>
+        /// 兼容包装：旧调用方（顶层遍历与全部旧自测）看到的仍是 bool。
+        /// <c>Unknown</c> 按 <c>false</c> 处理 —— <b>这是为了保持顶层不变</b>：顶层遍历不关心返回值（只为记录 outcome）。
+        /// </summary>
+        public bool ApplyElement(XmlElement op, bool nested) =>
+            ApplyElementTri(op, nested, out _) == ApplyResult.Succeeded;
+
+        /// <summary>
         /// 求值一个 <c>&lt;Operation&gt;</c> 节点（顶层或嵌套）。
         /// 返回引擎 <c>Apply()</c> 的返回值（含 Success 翻转），供 Sequence/Conditional 使用。
         /// </summary>
-        public bool ApplyElement(XmlElement op, bool nested)
+        private ApplyResult ApplyCore(XmlElement op, bool nested, out int skippedFollowups)
         {
+            skippedFollowups = 0;
+            // ★ Task 12：本操作（及其嵌套子操作）里是否出现过「未知」。
+            //   与 nested 参数无关（顶层也可能是未知）。
+            var nestedUnknown = false;
             var rawClass = op.GetAttribute("Class");
             var cls = PatchLayer.SimpleName(rawClass);
             var xpath = PatchLayer.Text(op, "xpath");
@@ -418,13 +469,23 @@ public static class PatchLayer
                         ["operationClass"] = rawClass,
                         ["xpath"] = xpath ?? "",
                     }));
-                return false;
+                // ★ Task 12：「未执行」≠「失败」。引擎里这个类是真执行的，我们只是不跑 mod 代码。
+                //   若这里返回 Failed，父 Sequence 会提前中止后续兄弟操作 ⇒ 后半段成片假阳 RD2009。
+                return ApplyResult.Unknown;
             }
 
-            var applied = Dispatch(op, kind, xpath, line, out var matched, out var evalError);
+            var applied = Dispatch(op, kind, xpath, line, out var matched, out var evalError,
+                out var nestedUnknown2, out var skipped2);
+            if (nestedUnknown2) nestedUnknown = true;
+            if (skipped2 > 0) skippedFollowups = skipped2;
 
+            // ★ Task 12：三态与跳过数就在「产生它们的那一层」写进 outcome。
+            //   不靠 out 参数往上递 —— 递到顶层只会串味（外层 Sequence 的数不应是内层的）。
+            var myResult = !applied ? ApplyResult.Failed
+                : (nestedUnknown ? ApplyResult.Unknown : ApplyResult.Succeeded);
             _outcomes.Add(new PatchOutcome(_file, _mod, line, kind, rawClass, xpath,
-                matched, applied, Skipped: false, SkipReason: null, EvaluationError: evalError));
+                matched, applied, Skipped: false, SkipReason: null, EvaluationError: evalError,
+                Result: myResult, SkippedFollowups: skippedFollowups));
 
             // ── Step 3：XPath 0 命中 → RD2009（只对会改文档的操作；控制流不算「打空」）──
             if (evalError is null && matched == 0 && PatchLayer.MutatingKinds.Contains(kind))
@@ -441,6 +502,9 @@ public static class PatchLayer
                         ["operationClass"] = rawClass,
                         ["xpath"] = xpath ?? "",
                         ["matched"] = "0",
+                        // ★ Task 12：若这条失败使嵌套 Sequence 中止，这里说明有几个兄弟操作被连带跳过。
+                        //   没有它，「后半段一条都没报」会被误读成「后半段没问题」。
+                        ["skippedFollowups"] = skippedFollowups.ToString(),
                     }));
             }
             else if (evalError is not null)
@@ -459,7 +523,7 @@ public static class PatchLayer
                     }));
             }
 
-            return applied;
+            return myResult;
         }
 
         /// <summary>
@@ -468,10 +532,14 @@ public static class PatchLayer
         ///   「顺手改漂亮」= 改变结果。
         /// </summary>
         private bool Dispatch(XmlElement op, PatchOpKind kind, string? xpath, int line,
-            out int matched, out string? evalError)
+            out int matched, out string? evalError, out bool nestedUnknown, out int skippedFollowups)
         {
             matched = -1;
             evalError = null;
+            skippedFollowups = 0;
+            // ★ Task 12：嵌套子操作里出现过「未知」吗？若有，本操作的结果也应是未知。
+            //   只有 Sequence / Conditional / FindMod 会设置它。
+            nestedUnknown = false;
             var worker = false;
 
             switch (kind)
@@ -640,7 +708,20 @@ public static class PatchLayer
                         foreach (XmlNode c in ops.ChildNodes)
                         {
                             if (c.NodeType != XmlNodeType.Element) continue;
-                            if (!ApplyElement((XmlElement)c, nested: true)) { worker = false; break; }
+                            // ★ Task 12：引擎只在 **真失败**（Apply() 返回 false）时中止。
+                            //   我们「不执行自定义 Class=」是 Unknown，**不能**当成失败中止 ——
+                            //   引擎里那个类可能返回 true，后续兄弟操作也就会真执行。
+                            //   若这里因 Unknown 中止，Sequence 后半段会刷出成片假阳 RD2009。
+                            var (ok, sawUnknown) = ApplyChildTri(c);
+                            if (sawUnknown) nestedUnknown = true;
+                            if (!ok)
+                            {
+                                worker = false;
+                                // ★ Task 12：首败中止 ⇒ 剩余兄弟被跳过。这个数字必须可见，
+                                //   否则「后半段一条都没报」会被误读成「后半段没问题」。
+                                skippedFollowups = CountRemainingElements(ops, c);
+                                break;
+                            }
                         }
                     break;
                 }
@@ -660,9 +741,9 @@ public static class PatchLayer
                     var nomatch = op.SelectSingleNode("nomatch");
                     if (hit)
                     {
-                        if (match is not null) { worker = ApplyChild(match); break; }
+                        if (match is not null) { var r = ApplyChildTri(match); worker = r.Worker; nestedUnknown |= r.SawUnknown; break; }
                     }
-                    else if (nomatch is not null) { worker = ApplyChild(nomatch); break; }
+                    else if (nomatch is not null) { var r = ApplyChildTri(nomatch); worker = r.Worker; nestedUnknown |= r.SawUnknown; break; }
                     worker = match is null ? nomatch is not null : true;
                     break;
                 }
@@ -693,9 +774,9 @@ public static class PatchLayer
                     var nomatch = op.SelectSingleNode("nomatch");
                     if (hit)
                     {
-                        if (match is not null) { worker = ApplyChild(match); break; }
+                        if (match is not null) { var r = ApplyChildTri(match); worker = r.Worker; nestedUnknown |= r.SawUnknown; break; }
                     }
-                    else if (nomatch is not null) { worker = ApplyChild(nomatch); break; }
+                    else if (nomatch is not null) { var r = ApplyChildTri(nomatch); worker = r.Worker; nestedUnknown |= r.SawUnknown; break; }
                     worker = true;   // 引擎：FindMod 两个分支都没配也返回 true
                     break;
                 }
@@ -746,6 +827,32 @@ public static class PatchLayer
         ///   第一版把它当成容器、去取它的第一个子元素当操作，于是把 <c>&lt;xpath&gt;</c> 误当成操作 ——
         ///   后果是 **match/nomatch 全都不执行**（还被误报成自定义 Class）。这是用例抓出来的。
         /// </summary>
+        /// <summary>数一数 <paramref name="container"/> 里 <paramref name="after"/> 之后还有多少个元素（不含它自己）。</summary>
+        private static int CountRemainingElements(XmlNode container, XmlNode after)
+        {
+            var n = 0;
+            var seen = false;
+            foreach (XmlNode c in container.ChildNodes)
+            {
+                if (ReferenceEquals(c, after)) { seen = true; continue; }
+                if (seen && c.NodeType == XmlNodeType.Element) n++;
+            }
+            return n;
+        }
+
+        /// <summary>
+        /// ★ Task 12：嵌套子操作的三态版。与 <c>ApplyElement</c> 的区别：「未知」不会被当成「失败」。
+        /// 返回 (worker, sawUnknown)：
+        ///   · worker     = 若干子操作全部成功/未知时为 true（仅当出现真失败时为 false）
+        ///   · sawUnknown = 出现过至少一个「未知」
+        /// </summary>
+        private (bool Worker, bool SawUnknown) ApplyChildTri(XmlNode child)
+        {
+            if (child is not XmlElement el) return (true, false);
+            var r = ApplyElementTri(el, nested: true, out _);
+            return (r != ApplyResult.Failed, r == ApplyResult.Unknown);
+        }
+
         private bool ApplyChild(XmlNode child) =>
             child is XmlElement el && ApplyElement(el, nested: true);
 

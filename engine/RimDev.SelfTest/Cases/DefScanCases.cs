@@ -21,7 +21,11 @@ public static class DefScanCases
         var fullScan = DefScanner.Scan(files);
 
         T.Case("★ 启用集合的文件数与实测锚点一致（mod 列表金丝雀）", () =>
-            T.Eq(files.Count, Facts.ActiveModXmlFileCount, "XML 文件数"));
+        {
+            T.Eq(files.Count, Facts.ActiveModXmlFileCount, "XML 文件数");
+            var totalBytes = files.Sum(f => new FileInfo(f.FileAbs).Length);
+            T.Eq(totalBytes, Facts.ActiveModXmlTotalBytes, "XML 总字节数");
+        });
 
         T.Case("流式扫描全部文件、耗时可控、失败数为 0", () =>
         {

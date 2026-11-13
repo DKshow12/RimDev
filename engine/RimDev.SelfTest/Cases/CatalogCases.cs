@@ -69,7 +69,7 @@ public static class CatalogCases
             finally { if (Directory.Exists(tmp)) Directory.Delete(tmp, true); }
         });
 
-        T.Case("★ 目录表：3984 个候选 → 3971 个 mod、0 个重复", () =>
+        T.Case("★ 目录表：3971 个真 mod、0 个重复、候选目录数在基线附近", () =>
         {
             var active = ModCatalog.ReadActiveMods(env.ModsConfigPath);
             T.Eq(active.Length, Facts.ActiveModCount, "activeMods 条数（★ 不能把 knownExpansions 混进来）");
@@ -82,7 +82,16 @@ public static class CatalogCases
                 "真实 packageId 重复数");
 
             var candidates = ModCatalog.EnumerateCandidates(env).Count();
-            T.Eq(candidates, Facts.CandidateModDirCount, "候选目录总数");
+            // ★ 不用精确等值：候选目录数会随任何工具往 Mods\ 丢文件夹而漂移（实测 2026-10-14 因
+            //   vision-toolkit 建了 Mods\.dsh-vision-toolkit，由 3984 → 3985，那是环境变动而非缺陷）。
+            //   下界 + 小容差仍能抓住真正的结构性漂移：递归枚举会爆到几万、丢掉工坊会掉到几十。
+            T.True(candidates >= Facts.CandidateModDirCount,
+                $"候选目录数 {candidates} 应 ≥ 基线 {Facts.CandidateModDirCount}");
+            T.True(candidates <= Facts.CandidateModDirCount + 16,
+                $"候选目录数 {candidates} 超出基线上限（{Facts.CandidateModDirCount} +16）——枚举口径可能变了");
+            var nonMod = candidates - cat.All.Count;
+            T.True(nonMod >= 1 && nonMod <= 20,
+                $"无 About.xml 的候选目录数 {nonMod} 应在 1..20（真 mod {cat.All.Count} / 候选 {candidates}）");
         });
 
         T.Case("启用 mod 全部定位到目录，且互相不重叠", () =>

@@ -295,20 +295,38 @@ rimdev check --scope active --only-official       # 只看官方 6 包，2.5 秒
   但它是**快照**，会过期；而且我们的判据必须来自本机当前安装。
 - **Def 分析**：它没有这项能力，无从借鉴。
 
-**④ 发现了但还没做的（诚实记账）**
+**④ 从那四个 `About.xml` 特性学到的（已补齐）**
 
 对比 `mgr_game_logs.py:189-250` 的 `_parse_dependencies`，RimCrow 处理了四个
-`About.xml` 特性，**RimDev 目前都还没实现**：
+`About.xml` 特性。RimDev 最初**都没实现**，后来按实测数据补齐了：
 
-| 特性 | RimCrow | RimDev |
+| 特性 | 实测使用量（4,080 个 About.xml） | RimDev 现状 |
 |---|---|---|
-| `modDependenciesByVersion` | ✓ 按版本归并 | ❌ |
-| `alternativePackageIds` | ✓ | ❌ |
-| `incompatibleWith` | ✓ | ❌ |
-| `core` → `ludeon.rimworld` 别名 | ✓ | ❌ |
+| `incompatibleWith` | **302 个 mod** | ✅ RD3003 |
+| `modDependenciesByVersion` | **107 个 mod** | ✅ RD3002 |
+| `alternativePackageIds` | 2 个 mod | ✅ RD3004 |
+| `core` → `ludeon.rimworld` 别名 | 0 个 mod（但合法） | ✅ 已归一 |
 
-后果：写 `core` 的依赖会判不到，写备选名的依赖会误判「缺前置」。
-已有实现可参照，只是这一轮没排上。
+> 有意思的是**数据本身回答了「值不值得做」**：`incompatibleWith` 有 302 个 mod 在用，
+> 而 `core` 别名一个都没有。先量后做，比照抄别人的功能列表靠谱。
+
+★ 这一节还留下一个**探针错误的完整记录**（后来写进了用例注释）：
+
+实现完跑真实语料得到 0 条诊断。为确认是「真没有」还是「没生效」，
+先写了个 Node 探针统计冲突 —— 它用 `/<packageId>(...)/` 取**第一个** packageId，
+但 `About.xml` 里 `<modDependencies>` 可能排在自身 packageId 之前，
+于是把「声明冲突的 mod」和「它依赖的 mod」搞混，报出 2 条「真实冲突」。
+
+核查后发现 `brrainz.harmony` 那条来自工坊 `1541721856`，
+其真正根级 packageId 是 `sarg.alphaanimals`。用「剥掉 `modDependencies` 段再取」重算：
+
+```
+带 incompatibleWith 的 About.xml   302
+其中已启用的                        48
+★ 真实冲突（正确统计）               0
+```
+
+⇒ **工具报 0 条是对的，错的是探针。**
 
 ### 三、DSH 生态（插件写法）
 
@@ -390,7 +408,6 @@ foreach (XmlNode childNode in node.ChildNodes)
   覆盖率是 245/295，不是全部。
 - **全量 `check` 很慢。** 14 分钟是固有成本，只做了「提前告知」和「可跳过」，
   没有真正优化掉。
-- **`About.xml` 四个特性还没实现**（见上一节 ④）。
 - **没有 GUI。** 纯 CLI。
 
 ---

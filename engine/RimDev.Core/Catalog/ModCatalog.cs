@@ -83,7 +83,38 @@ public sealed class ModCatalog
                 packageId = aboutInfo.PackageId;
                 if (string.IsNullOrWhiteSpace(packageId))
                 {
-                    // 无 packageId 的目录不进目录表（实测 13 个，多为无 About 的杂项目录）
+                    // ★ Task 24b：**有 About.xml 但读不出 packageId** —— 必须报，不能静默丢。
+                    //
+                    //   旧行为：直接 continue（注释写「实测 13 个，多为无 About 的杂项目录」）。
+                    //   但实测（2026-11-13）遇到反例：一个**刚写的、该加载的 mod**
+                    //   因 description 里一个裸 `<` 而 XML 不良构 ⇒ packageId 为空 ⇒ 被丢。
+                    //   工具对此没有任何提示：`order` 里只少一行，
+                    //   mod 在 <c>unresolvedPackageIds</c> 里露一个名字 —— 那个字段名看不出「你的 About 坏了」。
+                    //
+                    //   判据：有 aboutInfo.Error ⇒ 是**解析失败**（报 error，用户必须修）；
+                    //   无 Error ⇒ 真的只是缺 packageId（保持 info，不吓人）。
+                    if (!string.IsNullOrWhiteSpace(aboutInfo.Error))
+                    {
+                        diagnostics.Add(new Diagnostic(Codes.AboutXmlParseFailed, Severity.Error, Scope.Offline,
+                            $"About.xml 解析失败，该 mod **完全无法加载**",
+                            "修好 About.xml 的 XML 良构性（常见：描述里的裸 < 、&amp; 未转义）；"
+                            + "修复后重跑即可恢复",
+                            FileAbs: about, ModPackageId: null,
+                            Evidence: new Dictionary<string, string>
+                            {
+                                ["kind"] = "aboutXml",
+                                ["modRoot"] = root,
+                                ["parseError"] = aboutInfo.Error,
+                            }));
+                    }
+                    else
+                    {
+                        diagnostics.Add(new Diagnostic(Codes.AboutXmlParseFailed, Severity.Info, Scope.Offline,
+                            $"About.xml 里没有 <packageId>，该目录不进目录表",
+                            "如果这是你自己的 mod，补上 <packageId>；否则可忽略",
+                            FileAbs: about, ModPackageId: null,
+                            Evidence: new Dictionary<string, string> { ["kind"] = "aboutXml", ["modRoot"] = root }));
+                    }
                     continue;
                 }
             }

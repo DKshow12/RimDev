@@ -28,6 +28,11 @@ public static class Codes
     // RD9xxx 反模式规则包（v1 只实现可离线判定的成员相关项）
     public const string CustomXmlLoaderInfo = "RD4008";
 
+    /// <summary>★ Task 23：Def 名查证需要 Def 索引，而本次没给。</summary>
+    /// <remarks>与 <see cref="MetadataUnavailable"/>（RD4006）分开：那个指「元数据引擎生不了」，
+    /// 本码指「元数据好好的，只是这条查询需要索引」。混用会让用户去修环境而永远修不好。</remarks>
+    public const string DefNameIndexRequired = "RD4007";
+
     /// <summary>
     /// 字段标了 <c>[Unsaved]</c> 且 <c>allowLoading == false</c>，而 XML 写了它 —— 引擎会
     /// <c>Log.Error("XML error: … corresponds to a field in type … which has an Unsaved attribute. Context: …")</c>
@@ -56,6 +61,20 @@ public static class Codes
     // ===== 第 2 期 =====
     // RD2xxx Def 结构与加载
     public const string XmlParseFailed = "RD2001";
+
+    /// <summary>
+    /// ★ Task 24：**About.xml 解析失败**。
+    ///
+    /// <para>与 <see cref="XmlParseFailed"/> RD2001 平行：那个指 Def XML，本码指 mod 元数据。</para>
+    ///
+    /// <para>★为什么必须报：About.xml 不良构时，该 mod 在目录表里**根本不存在**
+    /// （packageId 拿不到 ⇒ 无法入列），而 `order` 它只会出现在
+    /// <c>unresolvedPackageIds</c> 里 —— 那个字段名看不出「你的 About.xml 坏了」。</para>
+    ///
+    /// <para>实测（2026-11-13）：刚写的 mod 因 description 里一个裸 <c>&lt;</c>
+    /// 被静默丢弃，工具对此没有任何提示。</para>
+    /// </summary>
+    public const string AboutXmlParseFailed = "RD2007";
     public const string CommentContainsDoubleDash = "RD2002";
     public const string DefNameMissing = "RD2003";
     public const string DefNameDuplicate = "RD2004";

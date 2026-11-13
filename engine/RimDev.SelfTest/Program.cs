@@ -52,6 +52,11 @@ if (args.Contains("--task9b-cases"))
 }
 // ★ 第 3 期 Task 9c：按需入口 `rimdev-selftest --task9c-cases`（只跑本 Task 的用例，约十秒 ——
 //   其中 index/files/check×2/sim 各一次真扫描）。
+if (args.Contains("--task24-cases"))
+{
+    T.RunFile("phase3-task24", Phase3Task24Cases.Run);
+    return T.Report();
+}
 if (args.Contains("--task22-cases"))
 {
     T.RunFile("phase3-task22", Phase3Task22Cases.Run);
@@ -211,5 +216,7 @@ T.RunFile("phase3-task20", Phase3Task20Cases.Run);
 T.RunFile("phase3-task21", Phase3Task21Cases.Run);
 // ★ 第 3 期 Task 22：四扫描命令 --only-official 口径统一 + 同块数字一致
 T.RunFile("phase3-task22", Phase3Task22Cases.Run);
+// ★ 第 3 期 Task 24：About.xml 解析失败必须报出（不许静默丢弃）
+T.RunFile("phase3-task24", Phase3Task24Cases.Run);
 
 return T.Report();

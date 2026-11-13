@@ -85,7 +85,12 @@ public static class CheckCommand
         //   那是「--game-root / --workshop-root 被静默忽略」的入口（旧实现就是把它们丢掉、照常自动探测）。
         if (!cli.TryGetEnv(out var env)) return EnvironmentResolution.EnvExitCode;
         var active = ModCatalog.ReadActiveMods(env.ModsConfigPath);
-        var cat = ModCatalog.Build(env, env.TargetVersion, active).Catalog;
+        // ★ Task 24c：**保留整个 build result**，不只取 .Catalog。
+        //   旧写法 `.Catalog` 把 Diagnostics 丢了 —— 而那里装着
+        //   「About.xml 解析失败」（RD2007）这类**目录层**的诊断。
+        //   后果就是工具自己算出来了、但用户永远看不到。
+        var catBuild = ModCatalog.Build(env, env.TargetVersion, active);
+        var cat = catBuild.Catalog;
 
         // ★ 第 3 期 Task 3：引擎语义的加载顺序（Core → knownExpansions → activeMods）。
         //   RD2011 用它比较 loadAfter/loadBefore；遮蔽胜者判定用 RankFor(mods)（= 本次扫描子集内的序位）。
@@ -150,7 +155,12 @@ public static class CheckCommand
         //   实测（629 mod）：只跑 RD2009 需 13.7 分钟，只跑 RD3001 需 29 秒。
         //   没这个开关，想只看引用问题就得陪跑补丁层。
         var keptRules = runner.SelectRules(onlyRules, skipRules);
-        var diags = runner.Run(ctx)
+        var diags = runner
+            // ★ Task 24c：目录层诊断（About.xml 解析失败 / packageId 重复…）先并入。
+            //   它们不属于任何「规则」，而是目录构建的产物 —— 但对用户同样重要
+            //   （mod 根本加载不了）。放在前面是为了让 --severity error 也能表达它们。
+            .Run(ctx)
+            .Concat(catBuild.Diagnostics)
             .Where(d => d.Severity >= minSeverity)
             // ★ 第 3 期 Task 3：`--shadowing` 只保留「遮蔽 / 加载顺序」族（RD2011 / RD2025 / RD2026）。
             //   默认（不加开关）这族的诊断也会照常出现 —— 开关是**聚焦**而不是「打开」：

@@ -11,6 +11,8 @@ public static class IndexCommand
     /// <summary>本命令认得的开关（★ Task 9c：白名单的唯一声明点，紧挨着读它们的代码）。</summary>
     public static readonly CommandFlagSet Flags = new("index", PrintHelp,
         new FlagSpec("--scope", true, "active|all"),
+        // ★ Task 22：与 check / sim 口径一致 —— 三个扫描命令都该支持「只看官方」。
+        new FlagSpec("--only-official"),
         new FlagSpec("--rebuild"),
         new FlagSpec("--no-workshop"),
         new FlagSpec("--cache", true, "目录"),
@@ -66,6 +68,10 @@ public static class IndexCommand
         var cat = build.Catalog;
 
         var mods = (scope == ScanScope.All ? cat.All : cat.Active).AsEnumerable();
+        // ★ Task 22：只索引官方 6 包。用途：建一份最小可信的基线索引
+        //   （跨引擎版本最稳，且几秒就完），用于对比或快速验证。
+        if (args.Contains("--only-official"))
+            mods = mods.Where(m => m.Source == ModSource.Official);
         if (noWorkshop) mods = mods.Where(m => m.Source != ModSource.Workshop);
 
         var modList = mods

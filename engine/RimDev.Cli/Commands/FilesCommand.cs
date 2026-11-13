@@ -20,6 +20,8 @@ public static class FilesCommand
     /// <summary>本命令认得的开关（★ Task 9c：白名单的唯一声明点，紧挨着读它们的代码）。</summary>
     public static readonly CommandFlagSet Flags = new("files", PrintHelp,
         new FlagSpec("--scope", true, "active|all"),
+        // ★ Task 22：与 check / sim / index 口径一致。
+        new FlagSpec("--only-official"),
         new FlagSpec("--explain", true, "mod|all"),
         new FlagSpec("--filter", true, "子串"),
         new FlagSpec("--limit", true, "N"),
@@ -74,6 +76,9 @@ public static class FilesCommand
         var version = EngineVersionProbe.Probe(env);
 
         var mods = (scopeAll ? cat.All : cat.Active).ToList();
+        // ★ Task 22：只看官方 6 包的文件。
+        if (args.Contains("--only-official"))
+            mods = mods.Where(m => m.Source == ModSource.Official).ToList();
         if (filter is not null)
             mods = mods.Where(m => m.PackageId.Contains(filter, StringComparison.OrdinalIgnoreCase)
                                 || m.Locator.Contains(filter, StringComparison.OrdinalIgnoreCase)
@@ -116,7 +121,8 @@ public static class FilesCommand
                 byOrigin = mods.GroupBy(m => OriginOf(m).ToString())
                     .OrderByDescending(g => g.Count())
                     .ToDictionary(g => g.Key, g => g.Count()),
-                xmlFileCount = TotalXmlFiles(cat, scopeAll),
+                // ★ Task 22b：与人读输出同一口径（已过滤的 mods）。
+                xmlFileCount = TotalXmlFiles(mods),
                 mods = mods.Select(m => Describe(m, version)).ToList(),
             };
             Console.WriteLine(JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
@@ -126,7 +132,12 @@ public static class FilesCommand
         Console.WriteLine($"scope            {(scopeAll ? "all" : "active")}");
         Console.WriteLine($"引擎版本口径      {version.CurrentVersionString}（CurrentVersionStringWithoutBuild={version.CurrentVersionStringWithoutBuild}，来源={version.Source}）");
         Console.WriteLine($"mod 数           {mods.Count}   （目录表 {cat.All.Count} / 启用 {cat.Active.Count}）");
-        Console.WriteLine($"XML 文件总数     {TotalXmlFiles(cat, scopeAll)}   （按引擎口径去重后）");
+        // ★ Task 22b：**必须用上面已经过滤好的 mods**。
+        //   旧写法 TotalXmlFiles(cat, scopeAll) 自己重算一遍 mod 集合 ——
+        //   它不知道 --only-official / --filter，于是同一块输出里出现两个口径：
+        //     mod 数 6（已过滤） / XML 文件总数 20058（未过滤的全库）
+        //   读者无法判断哪个对。只能有一个来源。
+        Console.WriteLine($"XML 文件总数     {TotalXmlFiles(mods)}   （按引擎口径去重后）");
         Console.WriteLine();
 
         var shown = 0;
@@ -210,9 +221,14 @@ public static class FilesCommand
         return folders is null || folders.Count == 0 ? 0 : DefFileEnumerator.Enumerate(folders).Count;
     }
 
-    private static int TotalXmlFiles(ModCatalog cat, bool scopeAll)
+    /// <summary>
+    /// 数 <paramref name="mods"/> 里的 XML 文件（按引擎口径去重）。
+    /// <para>★ Task 22b：形参从 <c>(ModCatalog, bool)</c> 改成**已过滤的 mod 列表** ——
+    /// 旧签名会自己重算一遍集合，与调用方已经做过的过滤（--only-official /
+    /// --filter）脱节，导致同一块输出里两个数字口径不一致。</para>
+    /// </summary>
+    private static int TotalXmlFiles(IReadOnlyList<ModInfo> mods)
     {
-        var mods = scopeAll ? cat.All : cat.Active;
         return DefScanner.CollectFiles(
             mods.Select(m => (m.PackageId, m.RootPath, (IReadOnlyList<string>)m.LoadFolders))).Count;
     }

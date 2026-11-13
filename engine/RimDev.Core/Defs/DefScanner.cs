@@ -149,7 +149,10 @@ public static class DefScanner
                             FileAbs: fileAbs,
                             FileRelToMod: rel,
                             Line: line,
-                            ClassAttr: string.IsNullOrWhiteSpace(classAttr) ? null : classAttr);
+                            ClassAttr: string.IsNullOrWhiteSpace(classAttr) ? null : classAttr,
+                            // ★ 第 3 期 Task 4b：安装根直接就地填上（ScanFile 已经有这个形参，只是以前没往 RawDef 里放）。
+                            //   折叠跨安装副本靠它区分「同一份安装内真重复」与「同一 packageId 的多份安装」。
+                            ModRoot: modRoot);
 
                         if (reader.IsEmptyElement) Emit();    // 空 def 节点：只有属性
                         continue;

@@ -24,4 +24,14 @@ if (args.Contains("--task4-measure"))
     return 0;
 }
 Phase3Task4Cases.Run();
+// ★ 第 3 期 Task 4b：同一 packageId 多份安装不再放大重复诊断（RD2026/RD2004 的折叠）
+Phase3Task4bCases.Run();
+// ★ 第 3 期 Task 4b：按需入口 `rimdev-selftest --task4b-measure`（全库 A/B 对照，约 60 s，不进常规跑）
+//   与 Task 4 的 `--task4-measure` 同一先例：同一份 ctx 上把「修复前（ModRoot 全 null）/ 修复后」各跑一遍，
+//   差值只可能来自折叠，不会与语料漂移混淆。
+if (args.Contains("--task4b-measure"))
+{
+    Phase3Task4bCases.RunMeasurement();
+    return 0;
+}
 return T.Report();

@@ -1,3 +1,4 @@
+using RimDev.Core.Defs;
 using RimDev.Core.Diagnostics;
 
 namespace RimDev.Core.Checks;
@@ -10,6 +11,11 @@ namespace RimDev.Core.Checks;
 ///   归档的真实游戏日志里 `Duplicate defName` 命中为 **0** —— 游戏自己也不认为这些是重名。
 ///   按「全局唯一」实现会一次报出 1202 条假错误（`--scope all` 时 27722 条），
 ///   正是本项目最忌讳的「误报比不报更糟」。
+///
+/// ★★ 折叠跨安装副本（第 3 期 Task 4b）：同一 packageId 装了两份时（本机 CE 实测），两份安装的
+///   相对路径完全相同，不折叠会把一次**无害双装**放大成 3,719 条 warning。折叠条件 = 同 packageId +
+///   同 FileRelToMod + **ModRoot 不同**（实现与口径的唯一真源 = <see cref="InstallReplicaCollapse"/>，
+///   与 ShadowingCheck 共用，不许复制第二套）。折叠后声明数 < 2 的组**根本不是重名组**。
 ///
 /// ★ 抽象声明（`Abstract="True"`）已在 `DefIndex.Build` 处排除出 `ByTypeAndDefName` —— 它们不会被引擎
 ///   建成 def，其上的 `<defName>` 只是装饰（原版 PawnKinds_Mercenary.xml:198 的抽象模板也写了 defName）。
@@ -26,8 +32,14 @@ public sealed class DuplicateDefNameCheck : ICheck
     {
         // ★ 按 (DefType, defName) 判重 —— defName 唯一性是【按 DefType】的，用 ByDefName 会
         //   一次报出 1202 条假错误（详见本节开头的前提修正 ②）。
-        foreach (var ((defType, name), defs) in ctx.Index.ByTypeAndDefName)
+        foreach (var ((defType, name), allDecls) in ctx.Index.ByTypeAndDefName)
         {
+            // ★★ Task 4b：与 ShadowingCheck 用**同一份**折叠实现（InstallReplicaCollapse）——
+            //   同一 packageId 的两份安装（本机 CE 实测）相对路径完全相同，不折叠会在此处把
+            //   一次无害双装放大成 3,719 条 warning。复制第二套口径必然分叉，所以不另写。
+            var collapse = InstallReplicaCollapse.Collapse(allDecls, ctx.Catalog);
+            var defs = collapse.Kept;
+
             if (defs.Count < 2) continue;
             // ★ 报告过滤器：指定了目标 mod 时，只报“该 mod 参与其中”的重名
             if (ctx.TargetModPackageId is not null
@@ -46,6 +58,7 @@ public sealed class DuplicateDefNameCheck : ICheck
                 Suggestions: rest.Select(d => $"{d.ModPackageId}:{d.FileRelToMod}:{d.Line}").ToList(),
                 Evidence: new Dictionary<string, string>
                 {
+                    // ★ Task 4b：evidence 也用 Kept（与上面 “被声明 N 次” 的 N 保持同一个口径）。
                     ["declarations"] = string.Join(" | ", defs.Select(d => $"{d.ModPackageId}/{d.FileRelToMod}:{d.Line}")),
                     ["types"] = string.Join(",", defs.Select(d => d.DefType).Distinct())
                 });

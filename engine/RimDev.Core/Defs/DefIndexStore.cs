@@ -25,11 +25,14 @@ public sealed class DefIndexStore
     ///   一旦索引格式升级（字段增删/短键改名），旧缓存会被【静默当成新格式】读出来 —— 又是一类
     ///   「不报错、只是答案错」。`01` §7 早已定义 RD1004 = 索引缓存损坏或 schema 版本不匹配 →
     ///
-    /// ★ 版本历史：2 = 计数自洽三元组（第 3 期 Task 2）；**3 = def 头新增 ClassAttr（第 3 期 Task 2b）**——
-    ///   schema 2 的缓存里没有 Class= 属性，读出来会让 `&lt;Def Class="Rimatomics..."&gt;` 退回按元素名校验（假阳），
-    ///   所以必须升级版本号把旧缓存拒掉，而不是靠「缺字段就当 null」默默接受。
+    /// ★ 版本历史：2 = 计数自洽三元组（第 3 期 Task 2）；3 = def 头新增 ClassAttr（第 3 期 Task 2b）；
+    ///   **4 = def 头新增 ModRoot（第 3 期 Task 4b）** ——
+    ///   schema 3 的缓存里没有安装根，读出来会让 `InstallReplicaCollapse` 的判别键
+    ///   （同 packageId + 同相对路径 + **ModRoot 不同**）全部退化，跨安装副本又会被当成
+    ///   「同 mod 内重复」报出来（全库实测 3,878 条假 error）。**同一纪律：升级版本号拒掉旧缓存，
+    ///   不靠「缺字段就当 null」默默接受**（后者正是「不报错、只是答案错」那一类）。
     /// </summary>
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
 
     /// <summary>
     /// 缓存目录的【单一真源】。
@@ -94,7 +97,11 @@ public sealed class DefIndexStore
                     r = d.FileRelToMod,
                     l = d.Line,
                     // ★ schema 3：Class= 属性（def 元素的类型指定）。旧版缓存无此键 → 靠 schema 版本号拒掉。
-                    c = d.ClassAttr
+                    c = d.ClassAttr,
+                    // ★ schema 4（Task 4b）：安装根。**必须落盘**：不落盘的话，任何从缓存读 def 的消费方
+                    //   拿到的 ModRoot 都是 null，InstallReplicaCollapse 会静默退化成「不折叠」——
+                    //   即「缓存路径上修复不生效」这种最难发现的错。
+                    mr = d.ModRoot
                 }, Json));
             }
         }
@@ -150,7 +157,9 @@ public sealed class DefIndexStore
                 Line: r.GetProperty("l").GetInt32(),
                 // ★ schema 3：Class= 可选（旧缓存没有这个键，但旧缓存会被 schemaVersion 拒掉；
                 //   这里用 TryGetProperty 只是不让读环路径自杀）。
-                ClassAttr: r.TryGetProperty("c", out var cEl) ? cEl.GetString() : null));
+                ClassAttr: r.TryGetProperty("c", out var cEl) ? cEl.GetString() : null,
+                // ★ schema 4（Task 4b）：安装根（同 ClassAttr，可选项只为不让读环路径自杀）。
+                ModRoot: r.TryGetProperty("mr", out var mrEl) ? mrEl.GetString() : null));
         }
         return list;
     }

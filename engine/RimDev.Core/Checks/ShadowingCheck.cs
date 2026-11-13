@@ -8,15 +8,25 @@ namespace RimDev.Core.Checks;
 /// ★ 一次 scope 内「重复声明」的分组统计。<b>全是顺序无关的量</b> —— 它们只回答
 /// 「有多少组 <c>(DefType, defName)</c> 被声明了多次」，不掺入胜者判定，所以可以与历史探针直接对账。
 ///
+/// ★★ <b>口径（第 3 期 Task 4b 改正）：这里所有量都是【已折叠跨安装副本之后】的口径。</b>
+/// 不写这句，下一个会话看到全库 RD2026 = 14（修复前 3,892）会把它当成回归
+/// （详见 <see cref="InstallReplicaCollapse"/>）。
+///
 /// ★ 口径必须写清楚（本项目历史上多次因口径混淆得出错误结论）：
 /// <list type="bullet">
-/// <item><see cref="DuplicateGroups"/> = 声明数 ≥ 2 的 <c>(DefType, defName)</c> 组数（**不** 计 <c>Abstract="True"</c>）。</item>
+/// <item><see cref="DuplicateGroups"/> = 声明数 ≥ 2 的 <c>(DefType, defName)</c> 组数（**不** 计 <c>Abstract="True"</c>）；
+///   计数前先做一次 <see cref="InstallReplicaCollapse"/>，折叠后 <c>Kept.Count &lt; 2</c> 的组**根本不是重复组**。</item>
 /// <item><see cref="GroupsInSingleMod"/> / <see cref="GroupsAcrossMods"/> = 上面这些组按「贡献声明的 mod 个数」
 ///   分成两类：1 个 mod ⇒ 前者；≥2 个 mod ⇒ 后者。二者之和**恒等于** <see cref="DuplicateGroups"/>。</item>
 /// <item><see cref="GroupsWithAnyWithinModDup"/> = 组内**某个 mod 自己**就声明了 ≥ 2 次（与上一对不是同一个划分：
 ///   一个组可以既跨 mod、又有 mod 内部重复）。这是任务书说的「同 mod 内」最自然的口径。</item>
 /// <item><see cref="WithinModGroups"/> = <c>(mod, DefType, defName)</c> 三元组里声明数 ≥ 2 的个数 = **RD2026 的条数**。</item>
 /// <item><see cref="CrossModLosingDeclarations"/> = 在跨 mod 竞争里落败的声明数 = **RD2025 的条数**。</item>
+/// <item><see cref="TotalDeclarations"/> / <see cref="DeclarationsInDuplicateGroups"/> 同样是折叠**之后**的数
+///   （与上面各量保持同一个口径；“索引里的原始行数”是另一回事，要去问 <c>DefIndex.TotalDefs</c>）。</item>
+/// <item><see cref="InstallReplicaDeclarationsDropped"/> / <see cref="InstallReplicaPackages"/> = 本次折叠掉多少条声明、
+///   涉及哪些 packageId。★ 它们**必须恒可读**（不折叠时是 0 / 空表），因为 `check --json` 的
+///   <c>installReplicas</c> 块要靠它们防「字段缺失 = 假 0」。</item>
 /// </list>
 /// </summary>
 public sealed record ShadowingStats(
@@ -28,7 +38,10 @@ public sealed record ShadowingStats(
     int SameModLosingDeclarations,
     int CrossModLosingDeclarations,
     int TotalDeclarations,
-    int DeclarationsInDuplicateGroups);
+    int DeclarationsInDuplicateGroups,
+    // ★ 第 3 期 Task 4b 追加（加在末尾 = 既有位置调用不受影响）：跨安装副本折叠的产物。
+    int InstallReplicaDeclarationsDropped = 0,
+    IReadOnlyList<string>? InstallReplicaPackages = null);
 
 /// <summary>
 /// 遮蔽与加载顺序规则族（第 3 期 Task 3）：
@@ -61,6 +74,14 @@ public sealed record ShadowingStats(
 /// </para>
 ///
 /// <para>
+/// ★★ <b>Task 4b：统计与诊断的口径都是「已折叠跨安装副本之后」的重复组。</b>
+/// 同一 packageId 可以在本机装两份（工坊目录不同、内容相同 —— 实测 Combat Extended ×2），
+/// 它们会被 <see cref="ModCatalog.Build"/> 归并成「同一个 mod」，于是同一份内容被当成
+/// 「同 mod 内重复声明」报了两次（全库实测 3,878 条假 error）。折叠规则与判别键见
+/// <see cref="InstallReplicaCollapse"/>（—— 判别键必须是 **安装根不同**，不能只看相对路径）。
+/// 本折叠**只改报告口径**，不改扫描集合（决策 (b)；「只评估一份安装」本期明确不做）。
+/// </para>
+/// <para>
 /// ★ 为什么 RD2026 是 error、RD2025 是 info：同一个 mod 自己重复声明是**作者失误**
 /// （引擎只会用其中一个，另一份静默消失）；跨 mod 的遮蔽是**生态常态**（故意覆盖原版内容），
 /// 把后者报成 error 会让 `--scope all` 一次刷出近万条噪音，使用者会直接不看报告。
@@ -76,8 +97,23 @@ public sealed class ShadowingCheck : ICheck
         foreach (var d in RunLoadOrderConsistency(ctx)) yield return d;
 
         // ② 同名 (DefType, defName) 的胜者/落败者（RD2025 info / RD2026 error）。
-        foreach (var d in Analyze(ctx).Diagnostics) yield return d;
+        //    ★ Task 4b：这里把分析结果【留在实例上】供 CLI 读（与 PatchCheck.LastRun 同一先例）。
+        //    为什么不能让 CLI 自己再算一遍「折叠了多少条」：两套口径必然分叉，而
+        //    `check --json` 的 installReplicas 块正是要防「字段缺失 = 假 0」的那个数字。
+        var analysis = Analyze(ctx);
+        LastAnalysis = analysis;
+        foreach (var d in analysis.Diagnostics) yield return d;
     }
+
+    /// <summary>
+    /// 本次跑完后遮蔽分析的**完整产物**（诊断 + 折叠统计），由 <see cref="Analyze"/> 自己算出。
+    ///
+    /// ★ 为什么要有它（与 <c>PatchCheck.LastRun</c> 同一个理由）：`check` 要把
+    /// 「跨安装副本折叠了多少条声明 / 涉及哪些 packageId」打进报告，而这个数字必须与规则内部
+    /// 实际用的口径**逐字一致**。CLI 自己重算一套 = 第二套口径（本项目历史上因此分叉过）。
+    /// nil = 本规则还没跑过（不是「折叠了 0 条」）。
+    /// </summary>
+    public ShadowingAnalysis? LastAnalysis { get; private set; }
 
     private static IEnumerable<Diagnostic> RunLoadOrderConsistency(CheckContext ctx)
     {
@@ -128,9 +164,25 @@ public sealed class ShadowingCheck : ICheck
         int duplicateGroups = 0, singleModGroups = 0, acrossModsGroups = 0, anyWithinModDup = 0;
         int withinModGroups = 0, sameModLosers = 0, crossModLosers = 0;
         int totalDecls = 0, declsInDupGroups = 0;
+        var replicaDropped = 0;
+        var replicaPackages = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var ((defType, defName), defs) in ctx.Index.ByTypeAndDefName)
+        foreach (var ((defType, defName), allDecls) in ctx.Index.ByTypeAndDefName)
         {
+            // ★★ Task 4b：**先折叠跨安装副本**，再拿 Kept 算胜者/落败者/分组统计。
+            //   同一 packageId 装了两份（本机 CE 实测）时，两份安装的相对路径完全相同，
+            //   于是“(mod, type, defName) 三元组里声明 ≥ 2 次”会在**同一份内容**上各算一次
+            //   → 一次无害双装被放大成数千条 error。折叠后 Kept.Count < 2 的组根本不是重复组。
+            //   （为什么不能只按 (pkg, rel) 判：详见 InstallReplicaCollapse 的类注释。）
+            var collapse = InstallReplicaCollapse.Collapse(allDecls, ctx.Catalog);
+            if (collapse.DeclarationsDropped > 0)
+            {
+                replicaDropped += collapse.DeclarationsDropped;
+                foreach (var p in collapse.Packages) replicaPackages.Add(p);
+            }
+
+            var defs = collapse.Kept;
+
             totalDecls += defs.Count;
             if (defs.Count < 2) continue;
 
@@ -251,7 +303,10 @@ public sealed class ShadowingCheck : ICheck
             SameModLosingDeclarations: sameModLosers,
             CrossModLosingDeclarations: crossModLosers,
             TotalDeclarations: totalDecls,
-            DeclarationsInDuplicateGroups: declsInDupGroups);
+            DeclarationsInDuplicateGroups: declsInDupGroups,
+            // ★ Task 4b：跨安装副本的折叠统计（恒可读，不折叠时 0 / 空表）。
+            InstallReplicaDeclarationsDropped: replicaDropped,
+            InstallReplicaPackages: replicaPackages.ToList());
 
         return new ShadowingAnalysis(diags, stats);
     }

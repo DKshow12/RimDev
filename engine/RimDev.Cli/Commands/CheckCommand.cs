@@ -136,6 +136,8 @@ public static class CheckCommand
             .ToList();
         // ★ Task 4：补丁层统计的唯一来源（null = 该规则因「扫描集合 ∩ 启用集合里没有补丁文件」提前返回）
         var patchCheck = runner.Checks.OfType<PatchCheck>().FirstOrDefault();
+        // ★ Task 4b：跨安装副本折叠统计的唯一来源（同上，不许 CLI 重算）。
+        var shadowCheck = runner.Checks.OfType<ShadowingCheck>().FirstOrDefault();
         sw.Stop();
 
         var summary = new
@@ -186,6 +188,17 @@ public static class CheckCommand
                         elapsedMs = ps.ElapsedMs
                     }
                     : null,
+                // ★ Task 4b：跨安装副本的折叠统计。**恒存在**（0 也报）——与 installReplicas 同属「防假 0」：
+                //   字段缺失会让消费方分不出「没折叠」与「工具没实现」。
+                //   数字全部来自 ShadowingCheck.LastAnalysis（单一口径，CLI 不重算）。
+                installReplicas = new
+                {
+                    declarationsDropped = shadowCheck?.LastAnalysis?.Stats.InstallReplicaDeclarationsDropped ?? 0,
+                    packages = shadowCheck?.LastAnalysis?.Stats.InstallReplicaPackages ?? (IReadOnlyList<string>)Array.Empty<string>(),
+                    note = "同一 packageId 的多份安装（同一 mod 装两份）会各自贡献一条声明；"
+                         + "跨安装目录但相对路径相同、安装根不同的声明不再计作「同 mod 内重复」（RD2026）。"
+                         + "本折叠只改报告口径，不改扫描集合。"
+                },
                 summary,
                 elapsedMs = sw.ElapsedMilliseconds,
                 peakWorkingSetMb = Math.Round(
@@ -227,6 +240,15 @@ public static class CheckCommand
               + $" topOps={pl.TopLevelOperations} defNodes {pl.DefNodesBeforePatches}→{pl.DefNodesAfterPatches}"
               + $" NameAdded={pl.NameAttributesAdded} skipped={pl.SkippedCustomClass}（scan ∩ active）"
             : "补丁求值        未运行（scan ∩ active 里没有补丁文件）");
+        // ★ Task 4b：跨安装副本折叠的可见性（防「静默消失」）。
+        //   仅当真的折叠了才打（否则这一行会变成负信息）；数字一律来自 ShadowingCheck 自己。
+        //   不写这行的话，使用者看到全库 RD2026 从 3,892 跌到 14 时无法知道为什么。
+        var replicas = shadowCheck?.LastAnalysis?.Stats;
+        if (replicas is { InstallReplicaDeclarationsDropped: > 0 })
+            Console.WriteLine($"安装副本        折叠 {replicas.InstallReplicaDeclarationsDropped} 条声明"
+                              + $"（{replicas.InstallReplicaPackages?.Count ?? 0} 个 packageId："
+                              + string.Join(", ", replicas.InstallReplicaPackages ?? (IReadOnlyList<string>)Array.Empty<string>())
+                              + "）—— 同一 packageId 的多份安装提供相同相对路径，不作为「同 mod 内重复」报告");
         Console.WriteLine($"耗时            {sw.ElapsedMilliseconds} ms   峰值工作集 "
                           + $"{Math.Round(System.Diagnostics.Process.GetCurrentProcess().PeakWorkingSet64 / 1048576.0, 1)} MB");
         Console.WriteLine();

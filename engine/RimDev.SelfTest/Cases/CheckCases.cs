@@ -80,15 +80,21 @@ public static class CheckCases
             }
         });
 
-        T.Case("★ 防假阳②：官方内容（Core + 5 DLC）按同 DefType 解析 ParentName 必须 0 未解析", () =>
+        T.Case("★ 防假阳②：官方内容（Core + 5 DLC）RD2005 与 RD2006 都必须为 0", () =>
         {
             var diags = new ParentChainCheck().Run(ctxOfficial).ToList();
             var unresolved = diags.Where(d => d.Code == Codes.ParentNotFound).ToList();
             var cycles = diags.Where(d => d.Code == Codes.InheritanceCycle).ToList();
+            // ★ 只在 defName 空间命中（抽象名空间没有）的 ParentName 条数 —— 期望 0。
+            //   引擎的 nodesByName 只认 Name 属性；这个数是 0 就说明「Name 空间优先」对 RD2005 判定零影响。
+            var defNameOnlyHit = officialDefs.Count(x => !string.IsNullOrEmpty(x.ParentName)
+                && !officialIdx.ByAbstractName.ContainsKey(x.ParentName!)
+                && officialIdx.ByDefName.ContainsKey(x.ParentName!));
             var withParent = officialDefs.Count(d => !string.IsNullOrEmpty(d.ParentName));
             Console.WriteLine(
                 $"       [防假阳②] 官方 mod={official.Count} / 官方 def={officialDefs.Count} / " +
-                $"其中带 ParentName={withParent} / RD2005={unresolved.Count} / RD2006={cycles.Count}");
+                $"其中带 ParentName={withParent} / RD2005={unresolved.Count} / RD2006={cycles.Count} / " +
+                $"只在 defName 空间命中的 ParentName={defNameOnlyHit}（期望 0）");
 
             // 反向守卫：官方集合若为空，下面的 0 就是空谈
             T.True(official.Count >= 6, $"官方 mod 数应 ≥ 6（Core + 5 DLC），实际 {official.Count}");
@@ -111,6 +117,105 @@ public static class CheckCases
 
             T.Eq(unresolved.Count, 0, "官方内容按 (DefType, defName) 解析 ParentName 必须 0 未解析；实际：" +
                 string.Join("; ", unresolved.Take(40).Select(d => $"{d.DefType}|{d.DefName}->{d.Message}")));
+
+            // ★ 防假阳第二根钉子（Task 6c）：RD2006 必须 0。
+            //   旧实现（defName 优先解析 + 按名字判环）在官方内容上报 5 条假自环；实测【只改一处】
+            //   只能降到 2 / 3 —— 所以这条断言同时钉死两处修改（解析顺序 + 判环键）。
+            foreach (var c in cycles)
+                Console.WriteLine($"         RD2006 假阳: {c.DefType}|{c.DefName} @{c.FileAbs}:{c.Line}");
+            var offending = cycles.Select(c => $"{c.DefType}|{c.DefName}").ToList();
+            var knownFalsePositives = new[]
+            {
+                "PawnKindDef|Mercenary_Slasher",                  // 抽象模板的装饰 defName 与真 def 同串
+                "PawnKindDef|Tribal_ChiefMelee",
+                "PawnKindDef|TradersGuild_Slasher",
+                "SoundDef|Designate_DragStandard_Changed",        // 抽象 Name 与真 def 的 defName 同串
+                "SoundDef|Designate_DragStandard_Changed_NoCam",
+            };
+            var regressed = knownFalsePositives.Where(offending.Contains).ToList();
+            T.Eq(cycles.Count, 0,
+                "官方内容上 RD2006 必须 0；命中：" +
+                string.Join("; ", cycles.Select(c => $"{c.DefType}|{c.DefName}@{Path.GetFileName(c.FileAbs)}:{c.Line}")) +
+                (regressed.Count > 0 ? "（其中已知假阳回归：" + string.Join(", ", regressed) + "）" : ""));
+        });
+
+        // ★ Task 6c 的合成 def 最小运行器：只喂 DefIndex.Build 出来的 def，不碰磁盘。
+        List<Diagnostic> RunSynthetic(params RawDef[] defs)
+        {
+            var list = defs.ToList();
+            var sIdx = DefIndex.Build(list);
+            var sCtx = new CheckContext(sIdx, Array.Empty<DefFileResult>(), cat, list, null);
+            return new ParentChainCheck().Run(sCtx).ToList();
+        }
+
+        T.Case("★ RD2006 仍能抓真环（合成 A↔B，两个不同声明互相 ParentName）", () =>
+        {
+            var d = RunSynthetic(
+                new RawDef("ThingDef", null, "SynCycA", "SynCycB", null, true, "syn.test",
+                    @"C:\syn\a.xml", @"Defs\a.xml", 10),
+                new RawDef("ThingDef", null, "SynCycB", "SynCycA", null, true, "syn.test",
+                    @"C:\syn\b.xml", @"Defs\b.xml", 20));
+            var cyc = d.Where(x => x.Code == Codes.InheritanceCycle).ToList();
+            Console.WriteLine($"       [合成 A↔B] RD2006={cyc.Count}：" +
+                string.Join(" | ", cyc.Select(c => c.Message + "  [" + c.Evidence?["cycle"] + "]")));
+            // ★ 计划勘误（Task 6c 实测；不是放宽判据，是计划 Step 5 的数字与真实不符）：
+            //   计划写「断言 RD2006 == 1」，实测恒为 **2** —— Run() 是【逐个声明】检查，A 与 B 各自都能从
+            //   自己出发走出一圈，各报一条。这与计划自己的口径一致：官方 5 条假阳被记为
+            //   「3 条 PawnKind + 2 条 SoundDef」而不是「3 个环组」。
+            //   这里按实测的确切值断言（比 >= 1 更严格），并额外钉死「两条描述的是同一个环组」。
+            T.Eq(cyc.Count, 2, "A↔B 的两个参与声明各报一条（Run 逐个声明检查；官方 5 条假阳也是这个口径）");
+            T.True(cyc.All(c => c.Evidence!["cycle"].Contains(@"Defs\a.xml:10", StringComparison.Ordinal)
+                             && c.Evidence!["cycle"].Contains(@"Defs\b.xml:20", StringComparison.Ordinal)),
+                "两条诊断都必须覆盖同一对声明（同一个环组）：" +
+                string.Join(" | ", cyc.Select(c => c.Evidence?["cycle"] ?? "<null>")));
+        });
+
+        T.Case("★ 装饰 defName 撞名不得判成环（合成 shape A：抽象模板 defName 与真 def 同串）", () =>
+        {
+            // 官方原形：Core\Defs\PawnKindDefs_Humanlikes\PawnKinds_Mercenary.xml
+            //   :198 抽象模板 Name="MercenarySlasherBase" 上写了装饰性的 <defName>Mercenary_Slasher</defName>
+            //   :232 真 def 也叫 Mercenary_Slasher，且 ParentName="MercenarySlasherBase"
+            var d = RunSynthetic(
+                new RawDef("PawnKindDef", "SynMerc", "SynMercBase", null, null, true, "syn.test",
+                    @"C:\syn\merc.xml", @"Defs\merc.xml", 198),
+                new RawDef("PawnKindDef", "SynMerc", null, "SynMercBase", null, false, "syn.test",
+                    @"C:\syn\merc.xml", @"Defs\merc.xml", 232));
+            var cyc = d.Where(x => x.Code == Codes.InheritanceCycle).ToList();
+            Console.WriteLine($"       [合成 shape A] RD2006={cyc.Count}");
+            T.Eq(cyc.Count, 0, "抽象模板上的装饰 defName 与真 def 同串是官方合法模式，不得判成环");
+        });
+
+        T.Case("★ defName 与抽象 Name 同串不得判成环（合成 shape B）", () =>
+        {
+            // 官方原形：Core\Defs\SoundDefs\UI_Oneshots_Designation.xml
+            //   :3  <SoundDef Name="Designate_DragStandard_Changed" Abstract="True">（只有 Name）
+            //   :19 真 def 的 <defName> 与它同串 —— defName 优先解析会指到它自己（旧实现报假自环）
+            var d = RunSynthetic(
+                new RawDef("SoundDef", null, "SynSnd", null, null, true, "syn.test",
+                    @"C:\syn\snd.xml", @"Defs\snd.xml", 3),
+                new RawDef("SoundDef", "SynSnd", null, "SynSnd", null, false, "syn.test",
+                    @"C:\syn\snd.xml", @"Defs\snd.xml", 19));
+            var cyc = d.Where(x => x.Code == Codes.InheritanceCycle).ToList();
+            Console.WriteLine($"       [合成 shape B] RD2006={cyc.Count}");
+            T.Eq(cyc.Count, 0, "真 def 的 defName 与抽象模板 Name 同串时，父节点应解析到抽象模板（不得判成自环）");
+        });
+
+        T.Case("★ RD2005 口径不变：defName 兜底仍算存在（防「改成 Name-only」的倒退钉子）", () =>
+        {
+            // 理由（见 ParentChainCheck 类注释）：引擎在 ApplyPatches 之后才 TryRegister，
+            // 补丁补上的 Name 属性在静态索引里看不到 —— CE 的 PatchOperationAttributeAdd
+            // （CombatExtended\Patches\ThingDef_Guns.xml:904-908 给 OSNGun_HMG 补 Name="OSNGun_HMG"）
+            // 就是官方形态，其 Defs\MechGuns.xml:54 的 <ThingDef ParentName="OSNGun_HMG"> 必须继续算「存在」。
+            // 全库同形 61 条 / 11 个 mod：删掉 defName 兜底会凭空造出这 61 条假阳。
+            var d = RunSynthetic(
+                new RawDef("ThingDef", "SynOnlyDefName", null, null, null, false, "syn.test",
+                    @"C:\syn\only.xml", @"Defs\only.xml", 5),
+                new RawDef("ThingDef", "SynChild", null, "SynOnlyDefName", null, false, "syn.test",
+                    @"C:\syn\only.xml", @"Defs\only.xml", 9));
+            var miss = d.Where(x => x.Code == Codes.ParentNotFound).ToList();
+            Console.WriteLine($"       [合成 defName 兜底] RD2005={miss.Count} / " +
+                $"RD2006={d.Count(x => x.Code == Codes.InheritanceCycle)}");
+            T.Eq(miss.Count, 0, "只在 defName 空间命中的 ParentName 必须继续算存在（改成 Name-only 会造出全库 61 条假阳）");
         });
 
         T.Case("★ ThreatFleet 的静态体检：0 个 error（历史结论：游戏内零 mod 错误）", () =>

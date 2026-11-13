@@ -272,5 +272,45 @@ public static class CheckCases
             T.Null(members.FindField("canBeDeconstructed"), "ThingDef 不应有 canBeDeconstructed");
             T.NotNull(members.FindField("resourcesFractionWhenDeconstructed"), "替代字段存在");
         });
+        // ===== Task 7 Step 5b：NameOracle.CheckDefName 的三条用例 =====
+        // 为什么放在 CheckCases 而不是 NameCases：
+        //   ① 本文件已经为「五条规则」建好了 active 全集的 DefIndex `idx`（1649 文件 / 14480 def）
+        //      与 ModCatalog。NameCases 若要做同样的事，必须把这一整套再跑一遍
+        //      （ModCatalog.Build 实测 ~1.4 s + 全量扫描 ~200 ms），而这里只多加载一次程序集
+        //      目录（ManagedAssemblyCatalog.Load，实测 12 ms）。
+        //   ② 缓存的索引就是 `rimdev index --scope active` 建的，用 idx 做用例与 CLI 的
+        //      `name check --kind def --index` 走的是同一份数据，覆盖的是同一条路径。
+        var oracle = new NameOracle(ManagedAssemblyCatalog.Load(env.ManagedDir));
+
+        T.Case("★ Def 名命中索引（TF_ThreatHive）：报存在且是 Info", () =>
+        {
+            var v = oracle.Check("TF_ThreatHive", NameKind.DefName, defIndex: idx);
+            Console.WriteLine($"       [def 命中] Exists={v.Exists} / Kind={v.Kind} / {v.Diagnostic.Severity} / {v.Diagnostic.Message}");
+            T.True(v.Exists, "TF_ThreatHive 应在 active 索引里存在（CLI：name check TF_ThreatHive --kind def --index → exit=0）");
+            T.Eq(v.Kind, NameKind.DefName, "命中时的 Kind");
+            T.Eq(v.Diagnostic.Severity, Severity.Info, "命中时应是 Info（不得报 Error）");
+        });
+
+        T.Case("★ Def 名未命中（TF_ThreatHiveX）：Error + 候选必须含真名", () =>
+        {
+            var v = oracle.Check("TF_ThreatHiveX", NameKind.DefName, defIndex: idx);
+            var cands = v.Diagnostic.Suggestions ?? Array.Empty<string>();
+            Console.WriteLine($"       [def 未命中] Exists={v.Exists} / {v.Diagnostic.Code} / 候选({cands.Count})={string.Join(", ", cands)}");
+            T.False(v.Exists, "TF_ThreatHiveX 不存在");
+            T.Eq(v.Diagnostic.Severity, Severity.Error, "未命中应是 Error（CLI 退出码 2）");
+            T.Eq(v.Diagnostic.Code, Codes.DefNameNotFound, "错误码应为 RD3001");
+            // ★ 钉住「给不出候选＝不合格」：只报不存在而没有候选，等于把查错拼写的成本丢回给用户
+            T.True(cands.Any(c => string.Equals(c, "TF_ThreatHive", StringComparison.Ordinal)),
+                "候选必须包含 TF_ThreatHive，实际: " + string.Join(", ", cands));
+        });
+
+        T.Case("★ 无 Def 索引时如实报「未建立索引」（Warning），不猜", () =>
+        {
+            var v = oracle.Check("TF_ThreatHive", NameKind.DefName, defIndex: null);
+            Console.WriteLine($"       [def 无索引] Exists={v.Exists} / {v.Diagnostic.Severity} / {v.Diagnostic.Message}");
+            T.False(v.Exists, "没有索引就不能说存在");
+            T.Eq(v.Diagnostic.Severity, Severity.Warning, "应为 Warning（如实说需要索引，而不是 Error/Info）");
+        });
+
     }
 }

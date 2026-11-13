@@ -40,4 +40,16 @@ public static class Codes
     public const string UnknownDefType = "RD2017";
     // RD1xxx 补充
     public const string DuplicatePackageId = "RD1005";
+
+    // ★ RD3001 的语义说明（预检修正 ②）：`01` §7 把 RD3001 定义为「引用悬空：目标 defName 不存在」，
+    //   那是第 3 期引用解析的用法（需要元数据知道 defaultProjectile 是 ThingDef 引用，见 `01` T12/T15）。
+    //   本期 `name check --kind def` 报的是【同一个条件】（某个 defName 不存在），差别只是没有引用点：
+    //   诊断里不会有引用处的 FileAbs/Line。第 3 期实现引用解析时会复用同一个码，届时靠 FileAbs/Line 区分两用。
+    public const string DefNameNotFound = "RD3001";
+
+    // 索引缓存 schema 不匹配（`01` §7 的 RD1004）：报它并【当作没有索引】，不要静默用旧缓存作答。
+    public const string CacheSchemaMismatch = "RD1004";
+
+    // 目标 mod 无法确定（`01` §4 退出码 5 的对应码；`01` §7 的 RD1xxx 表已补此行）
+    public const string TargetModNotFound = "RD1009";
 }

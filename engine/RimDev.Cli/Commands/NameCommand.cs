@@ -34,7 +34,40 @@ public static class NameCommand
             return 4;
         }
 
-        var verdict = new NameOracle(cat).Check(name, kind, owner);
+        // ★ --index：把 --kind def 接到落盘的 Def 索引上（不传时如实报「尚未实现」，不猜）。
+        RimDev.Core.Defs.DefIndex? defIndex = null;
+        if (args.Contains("--index"))
+        {
+            try
+            {
+                var env2 = GameEnvProbe.Discover();
+                // ★ 预检修正 ④：缓存目录只有一个真源（DefIndexStore.DefaultCacheDir）。
+                //   不要在这里重写 Path.Combine(Path.GetDirectoryName(env2.ModsDir), ...) ——
+                //   那个公式拼出的是 <游戏根>\_rimdev\cache，既不是缓存实际位置、也在工作区之外。
+                var store = new RimDev.Core.Defs.DefIndexStore(
+                    RimDev.Core.Defs.DefIndexStore.DefaultCacheDir(env2));
+                // ★ 预检修正 ⑤：schema 不符或 meta 不可读时报 RD1004 并【当作没有索引】，不静默用旧缓存作答。
+                var meta = store.Exists() ? store.LoadMeta() : null;
+                if (meta is null || meta.SchemaVersion != RimDev.Core.Defs.DefIndexStore.CurrentSchemaVersion)
+                {
+                    Console.Error.WriteLine(meta is null
+                        ? "（缓存索引不存在，先跑 `rimdev index`）"
+                        : $"{Codes.CacheSchemaMismatch}: 索引缓存 schema={meta.SchemaVersion} 与当前 {RimDev.Core.Defs.DefIndexStore.CurrentSchemaVersion} 不符，先跑 `rimdev index --rebuild`");
+                }
+                else
+                {
+                    defIndex = RimDev.Core.Defs.DefIndex.Build(store.LoadDefs());
+                }
+            }
+            // 环境不满足时如实退到 4（与上面程序集加载失败同一退出码），不要抛未捕获异常
+            catch (GameEnvProbeException ex)
+            {
+                Console.Error.WriteLine($"{Codes.GameRootNotFound}: {ex.Message}");
+                return 4;
+            }
+        }
+
+        var verdict = new NameOracle(cat).Check(name, kind, owner, defIndex);
         var d = verdict.Diagnostic;
 
         if (json)

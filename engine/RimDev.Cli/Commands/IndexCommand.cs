@@ -24,12 +24,9 @@ public static class IndexCommand
         try { env = GameEnvProbe.Discover(); }
         catch (GameEnvProbeException ex) { Console.Error.WriteLine("RD1001: " + ex.Message); return 4; }
 
-        var cacheDir = Option(args, "--cache")
-                       // ★ 必须从 env.ModsDir（= 游戏根\Mods）再往下取 _rimdev：
-                       //   _rimdev 就在 Mods\ 里，而 Path.GetDirectoryName(env.ModsDir) 得到的是
-                       //   游戏根，会拼出 <游戏根>\_rimdev\cache —— 那既不存在，也在 DSH 工作区
-                       //   (...\RimWorld\Mods) 之外，写入会被沙箱直接拒绝。
-                       ?? Path.Combine(env.ModsDir, "_rimdev", "cache");
+        // ★ 单一真源（预检修正 ④）：缓存目录只在 DefIndexStore.DefaultCacheDir 里定义一次，
+        //   索引命令与消费方（check / name --index）都调它 —— 各写一遍必然再次分叉。
+        var cacheDir = Option(args, "--cache") ?? DefIndexStore.DefaultCacheDir(env);
         var store = new DefIndexStore(cacheDir);
 
         var active = ModCatalog.ReadActiveMods(env.ModsConfigPath);

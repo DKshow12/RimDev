@@ -19,14 +19,22 @@ public sealed class NameOracle
 
     public NameOracle(ManagedAssemblyCatalog cat) => _cat = cat;
 
-    public NameVerdict Check(string name, NameKind kind = NameKind.Unknown, string? ownerType = null)
+    /// <summary>
+    /// 查证一个名字。
+    ///
+    /// <param name="defIndex">
+    /// Def 索引（可选，见 <see cref="CheckDefName"/>）。为 null 时 Def 名查证如实报「未建立索引」，不猜。
+    /// </param>
+    /// </summary>
+    public NameVerdict Check(string name, NameKind kind = NameKind.Unknown, string? ownerType = null,
+        RimDev.Core.Defs.DefIndex? defIndex = null)
     {
         return kind switch
         {
             NameKind.Type => CheckType(name),
             NameKind.Field or NameKind.Property or NameKind.Method => CheckMember(name, ownerType, kind),
             NameKind.EnumMember => CheckEnumMember(name, ownerType),
-            NameKind.DefName => NotImplementedDefName(name),
+            NameKind.DefName => CheckDefName(name, defIndex),
             _ => CheckAny(name)
         };
     }
@@ -165,6 +173,43 @@ public sealed class NameOracle
             $"{name} 既不是类型也不是成员",
             "v1 只查类型/字段/属性/方法/枚举；Def 名的查证需要 Def 索引（v2）",
             TypeName: name, MemberName: name, Suggestions: suggestions), NameKind.Unknown, false);
+    }
+
+    /// <summary>
+    /// Def 索引已建立后，Def 名查证走这里；索引为 null 时如实报「未建立索引」（与 v1 行为一致）。
+    ///
+    /// ★ `defName` 的唯一性是【按 DefType】的：同一个 defName 可以合法地出现在多个 DefType 里
+    ///   （实测本机 `TF_ThreatHive` 同时是 ThingDef 与 PawnKindDef，两行都非抽象）。
+    ///   本方法按约定的最小实现报【声明列表里的第一条】；它不表示该名字只此一处。
+    /// </summary>
+    private NameVerdict CheckDefName(string name, RimDev.Core.Defs.DefIndex? defIndex)
+    {
+        if (defIndex is null)
+            return NotImplementedDefName(name);
+
+        if (defIndex.IsDefNameTaken(name))
+        {
+            var d = defIndex.ByDefName[name][0];
+            // 索引里 FileRelToMod 理论上总是有值；真为空时退回绝对路径，不要印出空括号
+            var rel = string.IsNullOrEmpty(d.FileRelToMod) ? d.FileAbs : d.FileRelToMod;
+            return new NameVerdict(new Diagnostic(Codes.MetadataUnavailable, Severity.Info, Scope.Offline,
+                $"Def `{name}` 存在 → {d.DefType} @ {d.ModPackageId} （{rel}）",
+                TypeName: d.DefType, MemberName: name), NameKind.DefName, true);
+        }
+
+        var pool = defIndex.ByDefName.Keys;
+        var suggestions = pool
+            .Select(n => (n, s: MemberInfoIndex.Similarity(name, n)))
+            .Where(x => x.s > 0)
+            .OrderByDescending(x => x.s)
+            .Take(6)
+            .Select(x => x.n)
+            .ToList();
+
+        return new NameVerdict(new Diagnostic(Codes.DefNameNotFound, Severity.Error, Scope.Offline,
+            $"Def `{name}` 在索引里不存在",
+            suggestions.Count == 0 ? "确认拼写；可先用 rimsearcher list --type <DefType> 枚举同类 def" : "用候选名替换",
+            TypeName: name, MemberName: name, Suggestions: suggestions), NameKind.DefName, false);
     }
 
     /// <summary>Def 名查证需要 v2 的 Def 索引，v1 明确不做，且必须如实说明而不是猜。</summary>

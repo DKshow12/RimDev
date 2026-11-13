@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>rimdev-selftest</AssemblyName>
+    <RootNamespace>RimDev.SelfTest</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RimDev.Core\RimDev.Core.csproj" />
+  </ItemGroup>
+</Project>

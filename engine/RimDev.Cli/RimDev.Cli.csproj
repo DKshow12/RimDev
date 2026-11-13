@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>rimdev</AssemblyName>
+    <RootNamespace>RimDev.Cli</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RimDev.Core\RimDev.Core.csproj" />
+  </ItemGroup>
+</Project>

@@ -54,10 +54,29 @@ public static class Facts
     ///
     /// 更正记录（2026-10-14）：曾误记为 **6340** —— 那是我早期探针把 `&lt;mod&gt;\1.6\**\*.xml`
     /// （含 Languages/DefInjected 等）也算进去了，而且从未用代码复现过。
-    /// 按「Defs+Patches」这个真正想要的语义，权威值是 **1649**（由 RimDev.Core 自己算出，
+    /// 按「Defs+Patches」这个真正想要的语义，权威值原为 **1649**（由 RimDev.Core 自己算出，
     /// 并与独立枚举交叉验证；全库 `*\1.6\Defs\*.xml` 仍是 32694）。
+    ///
+    /// ★ 三期实测（2026-10-14 第 3 期 Task 1）：**1649 → 1652 → 1654**。
+    ///   原因**不是**口径变化，而是**语料漂移**：ThreatFleet（另一个写入者正在改的 mod）的
+    ///   `1.6\Defs\**\*.xml` 由 23 → 26 → 28 个（文件时间 20:57–21:14）。
+    ///
+    /// ★★ 关键不变量（主理人独立复核后钉住）：
+    ///     **1649 − 23 = 1652 − 26 = 1654 − 28 = 1626**
+    ///   三次快照完全吻合 ⇒ 增长**全部**来自 ThreatFleet，其余 16 个 mod 一个文件都没动。
+    ///   所以金丝雀**不用容差**，而是把锚点落在**不可变子集**上：
+    ///   断言 `总数 − ThreatFleet 贡献 == ActiveModXmlFileCountExcludingThreatFleet`（精确等值）。
+    ///   曾一度写成「基线 ± 64」，那能漏掉「少了一个只贡献 ≤64 个文件的小 mod」——
+    ///   而抓这类口径/内容漂移正是本金丝雀存在的理由（见 DefScanCases 用例注释）。
     /// </summary>
-    public const int ActiveModXmlFileCount = 1649;
+    public const int ActiveModXmlFileCount = 1654;
+    /// <summary>
+    /// **文件数金丝雀的真正判据（精确等值）**：启用集合扣除正在被另一个写入者改的 ThreatFleet
+    /// 之后，其它 16 个 mod 按 loadFolders 的 Defs+Patches 下的 *.xml 文件数。
+    /// 来源：1649 − 23 = 1652 − 26 = 1654 − 28 = **1626**（三次快照一致）。
+    /// 口径漂移（把 Languages/DefInjected 算进来）会让它一次跳几千，立刻出界。
+    /// </summary>
+    public const int ActiveModXmlFileCountExcludingThreatFleet = 1626;
     /// <summary>
     /// 上述 1649 个文件的**总字节数量级**（2026-10-14 实测 13,537,807 B ≈ 12.91 MB）。
     ///
@@ -76,8 +95,10 @@ public static class Facts
     /// <summary>
     /// ThreatFleet 的 XML 文件数与 def 数（2026-10-14 实测，**会随该 mod 日常开发而变化**）。
     /// 仅用于报告与粗筛，**不作为精确断言**；防「静默丢 def」靠 DefScanCases 里的 DOM 逐文件对账。
-    /// 更正记录：计划里曾写「17 个 XML / 233 个 Def」，那是旧快照；现为 23 个 XML / 185 个 def。
+    /// 更正记录：计划里曾写「17 个 XML / 233 个 Def」，那是旧快照；第 3 期 Task 1 实测已涨到
+    /// **28 个 XML**（20:57–21:14 陆续落地）——它正是 <see cref="ActiveModXmlFileCount"/>
+    /// 由 1649 → 1652 → 1654 的唯一原因。**这两个常量只用于报告，不作为精确断言。**
     /// </summary>
-    public const int ThreatFleetXmlFileCount = 23;
+    public const int ThreatFleetXmlFileCount = 28;
     public const int ThreatFleetDefCount = 185;
 }

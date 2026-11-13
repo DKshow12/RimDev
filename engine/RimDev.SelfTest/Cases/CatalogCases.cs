@@ -1,4 +1,5 @@
 using RimDev.Core.Catalog;
+using RimDev.Core.Defs;
 using RimDev.Core.Environment;
 
 namespace RimDev.SelfTest.Cases;
@@ -45,26 +46,33 @@ public static class CatalogCases
             T.True(info.SupportedVersions.Contains("1.6"), "supportedVersions 含 1.6");
         });
 
-        T.Case("loadFolders 读 <v1.6>（ThreatFleet 用 / 与 1.6 两个目录）", () =>
+        T.Case("loadFolders 读 <v1.6>（ThreatFleet 用 / 与 1.6 两个目录；1.6 优先级更高）", () =>
         {
             var root = Path.Combine(env.ModsDir, "ThreatFleet");
-            var dirs = LoadFoldersReader.Read(root, "1.6");
-            T.NotNull(dirs, "应读到 loadFolders");
-            T.Eq(dirs!.Length, 2, "目录数（/ 与 1.6）");
-            T.True(dirs.Any(d => d.TrimEnd('\\') == root.TrimEnd('\\')), "含 mod 根");
-            T.True(dirs.Any(d => d.EndsWith("1.6", StringComparison.Ordinal)), "含 1.6 子目录");
+            // ★ 第 3 期 Task 1 起：ResolutionOrigin 走【向下取版本】而不是「精确版本」——
+            //   引擎的 CurrentVersionString 是 "1.6.4871"，mod 写的是 <v1.6> ⇒ 精确分支永不命中（Q1）。
+            var r = LoadFoldersReader.Resolve(root, "dsh.threatfleet.fragments",
+                EngineVersionProbe.Probe(env), ModCatalog.ReadActiveMods(env.ModsConfigPath));
+
+            T.Eq(r.Origin, ResolutionOrigin.LowerVersion, "分支（精确串 1.6.4871 不命中）");
+            T.Eq(r.MatchedVersionKey, "1.6", "命中键");
+            T.Eq(r.DescendingOrder.Count, 2, "目录数（/ 与 1.6）");
+            T.True(r.DescendingOrder.Any(d => d.TrimEnd('\\') == root.TrimEnd('\\')), "含 mod 根");
+            T.Eq(Path.GetFileName(r.DescendingOrder[0]), "1.6", "1.6 必须排在根之前（后声明的 <li> 优先）");
         });
 
-        T.Case("loadFolders 不存在时 Read 返回 null", () =>
+        T.Case("loadFolders 不存在 → 回退分支 [1.6, root]（旧 Fallback 的 root 在前是错的）", () =>
         {
             var tmp = Path.Combine(Path.GetTempPath(), "rimdev-nolf-" + Guid.NewGuid().ToString("N"));
             try
             {
                 Directory.CreateDirectory(tmp);
-                T.Null(LoadFoldersReader.Read(tmp, "1.6"), "无 loadFolders 应返回 null");
+                T.False(LoadFolderResolver.Load(tmp).HasFile, "无 loadFolders 时 HasFile 应为 false");
                 Directory.CreateDirectory(Path.Combine(tmp, "1.6"));
-                var fb = LoadFoldersReader.Fallback(tmp, "1.6");
-                T.Eq(fb.Length, 2, "回落应含根 + 版本目录");
+                var r = LoadFoldersReader.Resolve(tmp, "tmp.mod", EngineVersionProbe.Probe(env), Array.Empty<string>());
+                T.Eq(r.Origin, ResolutionOrigin.FallbackDir, "回退分支");
+                T.Eq(string.Join("|", r.DescendingOrder.Select(Path.GetFileName)), "1.6|" + Path.GetFileName(tmp),
+                    "顺序必须是 1.6 → root（root 最后加 = 优先级最低）");
             }
             finally { if (Directory.Exists(tmp)) Directory.Delete(tmp, true); }
         });
@@ -142,10 +150,16 @@ public static class CatalogCases
                     + "<li>.</li><li>1.6</li><li>1.6</li><li>.</li><li>1.6</li>"
                     + "</v1.6></loadFolders>");
 
-                var dirs = LoadFoldersReader.Read(tmp, "1.6");
-                T.NotNull(dirs, "应读到 loadFolders");
-                T.Eq(dirs!.Length, 2, $"目录数应为 2（根 + 1.6），实际 {dirs.Length}：{string.Join(" | ", dirs)}");
-                T.Eq(dirs.Distinct(StringComparer.OrdinalIgnoreCase).Count(), 2, "目录必须互不重复");
+                // ★ 第 3 期 Task 1：引擎 **不**对目录去重（AddFolders 逐条追加），所以这里 5 条 <li> → 5 个目录项。
+                //   去重发生在文件层（DefFileEnumerator 按「相对文件夹根」的键 TryAdd 先到先得）。
+                var dirs = LoadFolderResolver.Resolve(tmp, "tmp.mod", LoadFolderResolver.Load(tmp),
+                    new EngineVersionInfo("1.6.4871", "1.6", new Version(1, 6, 4871, 591), "test", null),
+                    LoadFolderResolver.ActiveMatcher(Array.Empty<string>())).DescendingOrder;
+                T.Eq(dirs.Count, 5, $"引擎不去重目录，5 条 <li> 应得 5 项，实际 {dirs.Count}");
+                T.Eq(dirs.Distinct(StringComparer.OrdinalIgnoreCase).Count(), 2, "但不同目录只有 2 个（根 + 1.6）");
+                var files = DefFileEnumerator.Enumerate(dirs);
+                T.Eq(files.Count, files.Select(f => f.FileAbs).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+                    "文件层必须去重（同一份 XML 不得被枚举两次）");
             }
             finally { if (Directory.Exists(tmp)) Directory.Delete(tmp, true); }
         });

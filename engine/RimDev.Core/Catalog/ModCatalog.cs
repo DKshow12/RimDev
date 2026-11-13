@@ -42,6 +42,13 @@ public sealed class ModCatalog
         var diagnostics = new List<Diagnostic>();
         var candidates = EnumerateCandidates(env);
 
+        // ★ 版本口径必须来自引擎本体（RimWorld.VersionControl.CurrentVersionString = "1.6.4871"），
+        //   不能用 targetVersion（"1.6"）：引擎第 1 步查的是三段键，用 "1.6" 会把「精确分支」张冠李戴。
+        //   参数 targetVersion 保留只为签名兼容，真实口径见 EngineVersionProbe。
+        var versionInfo = Environment.EngineVersionProbe.Probe(env);
+        var isActiveMatcher = LoadFolderResolver.ActiveMatcher(activePackageIds);
+        _ = targetVersion;
+
         var byPkg = new Dictionary<string, ModInfo>(StringComparer.OrdinalIgnoreCase);
         var all = new List<ModInfo>();
 
@@ -69,8 +76,12 @@ public sealed class ModCatalog
                 continue;   // 没有 About.xml 就不是 mod
             }
 
-            var folders = LoadFoldersReader.Read(root, targetVersion)
-                          ?? LoadFoldersReader.Fallback(root, targetVersion);
+            // ★ 第 3 期 Task 1：引擎等价的 loadFolders 求解（五步分支 + If* 条件 + 倒序优先）。
+            //   旧实现（Read ?? Fallback）已删除，见 LoadFoldersReader 的类注释。
+            var doc = LoadFolderResolver.Load(root);
+            var resolved = LoadFolderResolver.Resolve(root, packageId, doc, versionInfo,
+                isActiveMatcher, aboutInfo.SupportedVersions);
+            var folders = resolved.DescendingOrder.ToArray();
 
             var info = new ModInfo(
                 PackageId: packageId,
@@ -86,7 +97,8 @@ public sealed class ModCatalog
                 IsActive: activePackageIds.Contains(packageId, StringComparer.OrdinalIgnoreCase),
                 HasAssemblies: Directory.Exists(Path.Combine(root, "Assemblies")),
                 AboutPath: hasAbout ? about : null,
-                AboutError: aboutInfo.Error);
+                AboutError: aboutInfo.Error,
+                Resolution: resolved);
 
             if (byPkg.TryGetValue(packageId, out var existing))
             {

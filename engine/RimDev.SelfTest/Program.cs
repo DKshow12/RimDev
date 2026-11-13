@@ -7,5 +7,6 @@ NameCases.Run();
 CatalogCases.Run();
 DefScanCases.Run();
 CheckCases.Run();
+LoadFolderCases.Run();
 
 return T.Report();

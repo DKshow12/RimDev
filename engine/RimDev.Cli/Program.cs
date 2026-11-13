@@ -2,7 +2,7 @@ using RimDev.Cli.Commands;
 
 if (args.Length == 0)
 {
-    Console.Error.WriteLine("usage: rimdev <env|api|name|index|check> [options]");
+    Console.Error.WriteLine("usage: rimdev <env|api|name|index|check|files> [options]");
     return 3;
 }
 
@@ -11,6 +11,7 @@ return args[0] switch
     "env" => EnvCommand.Run(args),
     "api" => ApiCommand.Run(args),
     "index" => IndexCommand.Run(args),
+    "files" => FilesCommand.Run(args),
     "check" => CheckCommand.Run(args),
     "name" => NameCommand.Run(args),
     "--version" => PrintVersion(),
@@ -26,6 +27,6 @@ static int PrintVersion()
 static int Unknown(string cmd)
 {
     Console.Error.WriteLine($"未知命令: {cmd}");
-    Console.Error.WriteLine("usage: rimdev <env|api|name|index|check> [options]");
+    Console.Error.WriteLine("usage: rimdev <env|api|name|index|check|files> [options]");
     return 3;
 }

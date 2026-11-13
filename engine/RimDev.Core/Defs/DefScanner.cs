@@ -216,29 +216,15 @@ public static class DefScanner
         }
     }
 
-    /// <summary>★ 用这个：把目录列表摊平成扫描输入。</summary>
+    /// <summary>
+    /// ★ 用这个：把目录列表摊平成扫描输入。
+    ///
+    /// 去重口径已在第 3 期 Task 1 **统一到 <see cref="DefFileEnumerator"/>**（引擎等价的「相对文件夹根路径」去重）：
+    /// 原先这里另写了一条「按绝对路径去重」的第二套口径，两套口径并存必然漂移，已删除。
+    /// 旧注释里说的「两处入口」现在只剩一处：<see cref="LoadFoldersReader"/> 不再自己枚举文件，
+    /// 只负责把目录列表算对（引擎语义），文件发现全在 <see cref="DefFileEnumerator"/>。
+    /// </summary>
     public static List<(string FileAbs, string ModPackageId, string ModRoot)> CollectFiles(
-        IEnumerable<(string PackageId, string RootPath, IReadOnlyList<string> LoadFolders)> mods)
-    {
-        var list = new List<(string FileAbs, string ModPackageId, string ModRoot)>();
-        // ★ 防线二（独立于 LoadFoldersReader.Read）：按 FileAbs 去重（大小写不敏感，Windows 路径），
-        //   保持首次出现顺序。两处都要修的原因：它们是两个独立入口，任一被改回都会重新引入重复；
-        //   且 ModInfo.LoadFolders 可能来自别处、根本没走 Read（例如调用方自己拼的目录列表）。
-        //   实测（2026-10-14）：all 作用域 files=74518 / distinct=73019，多出的 1499 条即重复枚举。
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var m in mods)
-        {
-            foreach (var dir in m.LoadFolders)
-            {
-                foreach (var sub in new[] { "Defs", "Patches" })
-                {
-                    var p = Path.Combine(dir, sub);
-                    if (!Directory.Exists(p)) continue;
-                    foreach (var f in Directory.EnumerateFiles(p, "*.xml", SearchOption.AllDirectories))
-                        if (seen.Add(f)) list.Add((f, m.PackageId, m.RootPath));
-                }
-            }
-        }
-        return list;
-    }
+        IEnumerable<(string PackageId, string RootPath, IReadOnlyList<string> LoadFolders)> mods) =>
+        DefFileEnumerator.Collect(mods);
 }

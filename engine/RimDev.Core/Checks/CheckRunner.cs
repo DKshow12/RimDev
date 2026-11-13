@@ -11,6 +11,9 @@ public sealed class CheckRunner
     public static CheckRunner Default()
     {
         return new CheckRunner()
+            // ★ 第 3 期 Task 1：loadFolders 规则族（RD2012/RD2018–RD2024）。放最前，因为「哪些目录/文件会被加载」
+            //   是其它所有规则的前提（加载目录算错，后面的 def 级诊断也就跟着错）。
+            .Add(new LoadFolderCheck())
             .Add(new XmlWellFormedCheck())
             .Add(new CommentDashCheck())
             .Add(new DuplicateDefNameCheck())

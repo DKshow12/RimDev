@@ -22,7 +22,22 @@ public static class DefScanCases
 
         T.Case("★ 启用集合的文件数与实测锚点一致（mod 列表金丝雀）", () =>
         {
-            T.Eq(files.Count, Facts.ActiveModXmlFileCount, "XML 文件数");
+            // ★ 第 3 期 Task 1 修正（主理人独立复核）：这里**不能**用「基线 ± 容差」——那等于把金丝雀
+            //   放宽 64 个文件，而它本是本期唯一的口径漂移报警器。正确做法是**把锚点落在不可变子集上**：
+            //   扣掉正在被另一个写入者改的 ThreatFleet，其余 16 个 mod 的 XML 数必须**精确不变**。
+            //   三次实测快照完全吻合这条不变量（这正是它可信的理由）：
+            //     1649 − 23 = 1626 ｜ 1652 − 26 = 1626 ｜ 1654 − 28 = 1626
+            //   ⇒ 1649 → 1654 的增长**全部**来自 ThreatFleet，其它 mod 一个文件都没动。
+            //   容差版能漏掉的东西（少一个只贡献 ≤64 个文件的小 mod）在这里会立刻变红。
+            var tfInputs = cat.Active
+                .Where(m => m.PackageId == "dsh.threatfleet.fragments")
+                .Select(m => (m.PackageId, m.RootPath, (IReadOnlyList<string>)m.LoadFolders))
+                .ToList();
+            int tfFiles = DefScanner.CollectFiles(tfInputs).Count;
+            int others = files.Count - tfFiles;
+            T.True(others == Facts.ActiveModXmlFileCountExcludingThreatFleet,
+                $"非 ThreatFleet 的启用 XML 文件数 {others} 应精确等于 {Facts.ActiveModXmlFileCountExcludingThreatFleet}"
+                + $"（ThreatFleet 当前 {tfFiles} / 合计 {files.Count}；ThreatFleet 在活跃开发中，故把它扣掉而不是放宽容差）");
             var totalBytes = files.Sum(f => new FileInfo(f.FileAbs).Length);
             // ★ 用区间而非精确等值：集合里有活跃开发的 ThreatFleet（见 Facts 注释）。
             //   用途是抓口径漂移（Languages 混入会跳到 ~41 MB），不是抓内容增删。
@@ -261,20 +276,25 @@ public static class DefScanCases
             T.Eq(all.Count, distinct, $"CollectFiles 返回 {all.Count} 条，其中不同路径只有 {distinct} 条");
         });
 
-        T.Case("★ 重复目录只枚举一次：所有 mod 的 LoadFolders 目录必须互不重复", () =>
+        T.Case("★ 重复 <li> 只枚举一次文件（引擎**不**去重目录，去重发生在文件层）", () =>
         {
+            // ★ 第 3 期 Task 1 的口径修正：引擎的 AddFolders 逐条追加、**不**对目录去重，
+            //   所以「所有 mod 的 LoadFolders 目录互不重复」这条**不再成立也不该成立**
+            //   （实测 2 个 mod 声明了重复 <li>，例：guy762.MM.KotORCore）。
+            //   真正要保住的不变量在**文件层**：同一份 XML 不得被枚举两次
+            //   （DefFileEnumerator 按「相对文件夹根」的键 TryAdd 先到先得）。
             int dupDirs = 0;
-            string? sample = null;
             foreach (var m in cat.All)
             {
                 var lf = (IReadOnlyList<string>)m.LoadFolders;
-                if (lf.Count != lf.Distinct(StringComparer.OrdinalIgnoreCase).Count())
-                {
-                    dupDirs++;
-                    sample ??= m.PackageId;
-                }
+                if (lf.Count != lf.Distinct(StringComparer.OrdinalIgnoreCase).Count()) dupDirs++;
             }
-            T.Eq(dupDirs, 0, $"仍有 {dupDirs} 个 mod 的 LoadFolders 含重复目录（例：{sample}）");
+            T.True(dupDirs >= 0, $"（信息）{dupDirs} 个 mod 的 LoadFolders 含重复目录 —— 引擎允许，不必修");
+
+            var all = DefScanner.CollectFiles(cat.All.Select(m =>
+                (m.PackageId, m.RootPath, (IReadOnlyList<string>)m.LoadFolders)));
+            var distinct = all.Select(f => f.FileAbs).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+            T.Eq(all.Count, distinct, $"CollectFiles 返回 {all.Count} 条，其中不同路径只有 {distinct} 条");
         });
     }
 }

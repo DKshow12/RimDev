@@ -38,7 +38,32 @@ public static class Codes
     public const string InheritanceCycle = "RD2006";
     public const string RootNotDefs = "RD2013";
     public const string UnknownDefType = "RD2017";
-    // RD1xxx 补充
+
+
+    // ===== 第 3 期 Task 1：loadFolders 规则族（引擎 Verse.ModLoadFolders.GetIssueList 的 issue 表）=====
+    // ★ 码号预检（2026-10-14）：这 10 个常量在本文件里命中数原本为 0（RD2012 只在 Docs\01 §7 的码表里，代码里没发射点）。
+    //   级别照 Docs\01 §7 的码表：RD2012 info / RD2018 warning / RD2019 warning / RD2020 warning /
+    //   RD2021 info / RD2022 warning / RD2023 info / RD2024 error；RD2025/RD2026 属 Task 3（遮蔽），此处一并占位。
+    /// <summary>loadFolders 声明了不存在的目录（Docs\01 §7：info，「通常无害」）。</summary>
+    public const string LoadFolderDoesntExist = "RD2012";
+    /// <summary>版本块里一个 &lt;li&gt; 都没有（引擎 ModLoadFolderListEmpty）。</summary>
+    public const string LoadFolderListEmpty = "RD2018";
+    /// <summary>同一个版本块内 &lt;li&gt; 重复（引擎 ModLoadFolderRepeatingFolder）。</summary>
+    public const string LoadFolderRepeatingFolder = "RD2019";
+    /// <summary>版本键格式非法（引擎 IsWellFormedVersionString 要求恰好两段；引擎 ModLoadFolderMalformedVersion）。</summary>
+    public const string LoadFolderMalformedVersion = "RD2020";
+    /// <summary>使用了已废弃的 default 版本键（引擎 ModLoadFolderDefaultDeprecated）。</summary>
+    public const string LoadFolderDefaultDeprecated = "RD2021";
+    /// <summary>版本键未升序（引擎 ModLoadFolderOutOfOrder）。</summary>
+    public const string LoadFolderOutOfOrder = "RD2022";
+    /// <summary>版本键不在该 mod 自己的 supportedVersions 里（引擎 ModLoadFolderDefinesUnsupportedGameVersion）。</summary>
+    public const string LoadFolderUnsupportedVersion = "RD2023";
+    /// <summary>解析出的加载文件夹列表为空 —— 该 mod 的 def 完全不会被加载。</summary>
+    public const string LoadFolderResolvedEmpty = "RD2024";
+    /// <summary>同名 (DefType, defName) 被更高优先级来源遮蔽（第 3 期 Task 3）。</summary>
+    public const string DefShadowed = "RD2025";
+    /// <summary>同一个 mod 内同一 (DefType, defName) 声明多次（第 3 期 Task 3）。</summary>
+    public const string DefDuplicateWithinMod = "RD2026";
     public const string DuplicatePackageId = "RD1005";
 
     // ★ RD3001 的语义说明（预检修正 ②）：`01` §7 把 RD3001 定义为「引用悬空：目标 defName 不存在」，

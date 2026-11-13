@@ -115,6 +115,50 @@ public static class Codes
 
     // 目标 mod 无法确定（`01` §4 退出码 5 的对应码；`01` §7 的 RD1xxx 表已补此行）
     public const string TargetModNotFound = "RD1009";
+
+    // ===== 第 3 期 Task 4：PatchOperation 家族静态求值 =====
+    //
+    // ★ 码号预检（2026-10-14，Task 4 §4 要求自己走一遍，不许信任务书的结论）：
+    //   grep 本文件 → RD2007–RD2010、RD2014–RD2016 **确实都没有常量**（命中 0）；
+    //   grep `Docs\01` §7 的 RD2xxx 码表 → **RD2009 与 RD2014 两行都已存在**，级别分别是
+    //   `warning` / `info`。⇒ 本 Task **只补常量与发射点，没有新建任何码号**，级别照码表。
+    //   （任务书点名的 RD2010 本 Task 用不到，不补；避免「建了常量但没有发射点」的假占位。）
+
+    /// <summary>
+    /// 补丁操作在合并后的 DOM 上求值后**什么都没改到**（`01` §7：warning，离线可判）。
+    ///
+    /// 引擎侧的事实（反编译 <c>Verse.PatchOperation</c>）：`Apply()` 的返回值只被 <c>neverSucceeded</c>
+    /// 记录，真正的报错发生在最后一步 <c>ClearCachedPatches() → patch.Complete(modIdentifier)</c>：
+    /// <code>
+    /// if (neverSucceeded) Log.Error($"[{modIdentifier}] Patch operation {this} failed\nfile: {sourceFile}");
+    /// </code>
+    /// 也就是说「补丁打空了」在引擎里是**静默到启动末尾才报**的一条 Error，而且只有一句话、
+    /// 不带 XPath 求值过程。这里把它提前、按 <c>文件:行</c> 定位。
+    ///
+    /// ★ 口径（防假阳的关键）：只对**会修改文档**的操作报（Add/Insert/Replace/Remove/SetName/
+    ///   AttributeAdd/AttributeSet/AttributeRemove/AddModExtension）。<c>Test</c>/<c>Conditional</c>/
+    ///   <c>FindMod</c>/<c>Sequence</c> 是控制流 —— 它们「返回 false」是设计意图（例如 Conditional 的
+    ///   xpath 未命中就是要走 nomatch），对它们报 RD2009 会在官方内容上立刻造出假阳。
+    ///   实测（见验收记录）：官方 6 包（14 个补丁文件）与启用集上 RD2009 = 0。
+    /// </summary>
+    public const string PatchXpathNoMatch = "RD2009";
+
+    /// <summary>
+    /// 补丁操作带自定义 <c>Class=</c>（mod 自带补丁类）—— 需要执行 mod 代码，本工具**不执行**，
+    /// 跳过该操作（`01` §5.1 与 §7：info，「需真机验证」）。
+    ///
+    /// 引擎事实：<c>ModContentPack.LoadPatches()</c> 用
+    /// <c>DirectXmlToObject.ObjectFromXml&lt;PatchOperation&gt;(childNode, doPostLoad: false)</c> 实例化，
+    /// 类型由 <c>Class=</c> 属性经 <c>GenTypes.GetTypeInAnyAssembly</c> 解析 —— 因为补丁加载发生在
+    /// `CreateModClasses()` 之后、mod 程序集已加载，所以**真实的 mod 补丁类会被真正执行**。
+    /// 我们的静态求值无法执行它 ⇒ 报本码并跳过；这不是 mod 的错，是工具的能力边界。
+    ///
+    /// ★ 同时覆盖「`&lt;Operation&gt;` 没有 `Class=` 属性」这一形态：引擎此时回落到基类
+    ///   <c>Verse.PatchOperation</c>，其 <c>ApplyWorker</c> 立刻
+    ///   <c>Log.Error("Attempted to use PatchOperation directly; patch will always fail")</c>。
+    ///   evidence 的 <c>reason</c> 区分 <c>customClass</c> / <c>missingClass</c>。
+    /// </summary>
+    public const string CustomPatchClass = "RD2014";
 }
 
 // ===== 第 3 期 Task 2 =====

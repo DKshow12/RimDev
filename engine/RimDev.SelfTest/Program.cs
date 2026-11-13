@@ -16,4 +16,12 @@ Phase3Task2bCases.Run();
 Phase3Task2cCases.Run();
 // ★ 第 3 期 Task 3：mod 加载顺序 + 文件夹优先级 + 遮蔽（RD2025/RD2026）+ 顺序一致性（RD2011）
 Phase3Task3Cases.Run();
+// ★ 第 3 期 Task 4：PatchOperation 家族静态求值 + RD2009/RD2014 + Step 1 时序（IL 实证）
+//   另有按需入口 `rimdev-selftest --task4-measure`（Step 6 的全库口径测量，约 60 s，不进常规跑）
+if (args.Contains("--task4-measure"))
+{
+    Phase3Task4Cases.RunMeasurement();
+    return 0;
+}
+Phase3Task4Cases.Run();
 return T.Report();

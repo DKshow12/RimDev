@@ -37,12 +37,29 @@ public static class Facts
     ///   （`_rimdev` / `.vscode` / `.agents` / `~` 之类），而任何工具往 Mods\ 丢一个文件夹它就会变：
     ///   2026-10-14 实测因 vision-toolkit 建了 `Mods\.dsh-vision-toolkit` 而由 3984 → 3985，
     ///   那是环境变动、不是代码缺陷。因此用例用「≥ 基线 + 小容差」而不是精确等值。
-    ///   真正稳定的不变量是 <see cref="ModsWithPackageId"/> 与 <see cref="RealDuplicatePackageIdCount"/>。
+    ///   真正稳定的不变量是 <see cref="RealDuplicatePackageIdCount"/> 与「候选数 − 真 mod 数」这个结构式；
+    ///   <see cref="ModsWithPackageId"/> **会随语料漂移**（见其注释：2026-10-15 已由 3971 → 3970）。
     /// </summary>
     public const int CandidateModDirCount = 3984;
-    /// <summary>能解析出 packageId 的 mod 数（其余 13 个目录没有 About.xml）。</summary>
+    /// <summary>
+    /// 能解析出 packageId 的 mod 数**基线**（2026-10-14 实测 3971）。
+    ///
+    /// ★ **这不是不变量**（2026-10-15 更正）：工坊目录的 About.xml 会被外部进程改写或删除 ——
+    ///   2026-10-15 18:19–18:20 实测有一大批 About.xml 被重写，真 mod 数由 3971 → **3970**，
+    ///   而候选目录数仍是 3984（等价于「没有 About.xml 的目录」由 13 → 14）。故用例按基线 ± 小容差断言。
+    ///   真正能抓住解析器回归的判据是：
+    ///   ① <see cref="RealDuplicatePackageIdCount"/> == 0（退化成「正则取第一个 packageId」会造出 257 条假重复）；
+    ///   ②「候选数 − 真 mod 数」= 没有 About.xml 的目录数，落在 1..20（解析静默失败会把它顶上去）。
+    /// </summary>
     public const int ModsWithPackageId = 3971;
-    /// <summary>用 XML 感知提取后，真正的 packageId 重复数 = 0。</summary>
+    /// <summary>
+    /// 真正的 packageId 重复数**基线**（2026-10-14 实测 0）。
+    ///
+    /// ★ **不是「必须恰好 0」**（2026-10-15 更正）：真实重复可以合法存在 —— 实测工坊里装了两份
+    ///   "Combat Extended"（`2890901044` 与 `3495749827`，同为 `CETeam.CombatExtended`，前者
+    ///   About.xml 于 2026-10-15 18:20 被外部重写）。本常量的真正用途是给「工具**制造**重复」定上界：
+    ///   退化成「正则取第一个 packageId」会一次造出 257 条假重复（2026-10-14 实测），小上界足够决定性。
+    /// </summary>
     public const int RealDuplicatePackageIdCount = 0;
     /// <summary>ModsConfig.xml 的 activeMods 条数。</summary>
     public const int ActiveModCount = 17;

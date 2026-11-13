@@ -124,13 +124,18 @@ public static class CheckCommand
         var ctx = new CheckContext(idx, scan.Files, cat, scan.Defs, targetFilter,
             LoadOrder: loadOrder, ModRank: loadOrder.RankFor(mods));
 
-        var diags = CheckRunner.Default().Run(ctx)
+        // ★ 第 3 期 Task 4：把 runner 持有住 —— 补丁层的实测统计要从 PatchCheck 自己身上读，
+        //   不能在 CLI 里重算一遍（两套口径必然分叉）。
+        var runner = CheckRunner.Default();
+        var diags = runner.Run(ctx)
             .Where(d => d.Severity >= minSeverity)
             // ★ 第 3 期 Task 3：`--shadowing` 只保留「遮蔽 / 加载顺序」族（RD2011 / RD2025 / RD2026）。
             //   默认（不加开关）这族的诊断也会照常出现 —— 开关是**聚焦**而不是「打开」：
             //   否则「RD2025/RD2026 到底报了多少条」就取决于有没有记得加开关，成了假 0。
             .Where(d => !shadowingOnly || IsShadowingCode(d.Code))
             .ToList();
+        // ★ Task 4：补丁层统计的唯一来源（null = 该规则因「扫描集合 ∩ 启用集合里没有补丁文件」提前返回）
+        var patchCheck = runner.Checks.OfType<PatchCheck>().FirstOrDefault();
         sw.Stop();
 
         var summary = new
@@ -154,6 +159,33 @@ public static class CheckCommand
                 shadowingOnly,
                 target = targetFilter ?? "(all in scope)",
                 scanned = new { mods = mods.Count, xmlFiles = files.Count, defs = idx.TotalDefs },
+                // ★ 第 3 期 Task 4：补丁求值范围。**必须显式报出来**，否则「RD2009/RD2014 = 0」
+                //   到底是「没打空」还是「根本没求值」分不清 —— 这正是项目纪律里的「假 0」。
+                //   求值集 = 扫描集合 ∩ 启用集合（引擎只会为具体的启用配置打补丁；见 PatchCheck 类注释）。
+                patchEvaluation = new
+                {
+                    configuration = "scan ∩ active",
+                    activeMods = active.Length,
+                    note = "RD2009/RD2014 只对【启用 mod】的补丁求值（引擎 ApplyPatches 只跑 runningMods）；"
+                         + "`--scope all` 的其余 3900+ 个 mod 的补丁是引擎永不执行的假想配置，未求值。"
+                },
+                // ★ Task 4 实测块：由 PatchCheck 自己填（null = 规则因「无补丁」提前返回）
+                patchLayer = patchCheck?.LastRun is { } ps
+                    ? new
+                    {
+                        defFiles = patchCheck.LastInputs?.DefFiles,
+                        patchFiles = patchCheck.LastInputs?.PatchFiles,
+                        unifiedDefNodes = ps.UnifiedDefNodes,
+                        topLevelOperations = ps.TopLevelOperations,
+                        defNodesBeforePatches = ps.DefNodesBeforePatches,
+                        defNodesAfterPatches = ps.DefNodesAfterPatches,
+                        registeredNodes = ps.RegisteredNodes,
+                        tKeyRefs = ps.TKeyRefs,
+                        nameAttributesAdded = ps.NameAttributesAdded,
+                        customClassSkipped = ps.SkippedCustomClass,
+                        elapsedMs = ps.ElapsedMs
+                    }
+                    : null,
                 summary,
                 elapsedMs = sw.ElapsedMilliseconds,
                 peakWorkingSetMb = Math.Round(
@@ -187,6 +219,14 @@ public static class CheckCommand
         Console.WriteLine($"扫描            {mods.Count} 个 mod / {files.Count} 个 XML / {idx.TotalDefs} 个 def"
                           + (targetFilter is not null ? "   （全集扫描；报告按目标过滤）" : ""));
         Console.WriteLine($"结果            error {summary.error}   warning {summary.warning}   info {summary.info}");
+        // ★ Task 4：RD2009/RD2014 的求值范围（默认 scope=active 时两者等价，`--scope all` 时不同）
+        // ★ Task 4：RD2009/RD2014 的求值范围与【实测】规模 —— 数字来自补丁层自己，不是 CLI 另算的。
+        //   没有这一行，「RD2009 = 0」就分不清是「没打空」还是「根本没求值」。
+        Console.WriteLine(patchCheck?.LastRun is { } pl
+            ? $"补丁求值        defFiles={patchCheck.LastInputs?.DefFiles} patchFiles={patchCheck.LastInputs?.PatchFiles}"
+              + $" topOps={pl.TopLevelOperations} defNodes {pl.DefNodesBeforePatches}→{pl.DefNodesAfterPatches}"
+              + $" NameAdded={pl.NameAttributesAdded} skipped={pl.SkippedCustomClass}（scan ∩ active）"
+            : "补丁求值        未运行（scan ∩ active 里没有补丁文件）");
         Console.WriteLine($"耗时            {sw.ElapsedMilliseconds} ms   峰值工作集 "
                           + $"{Math.Round(System.Diagnostics.Process.GetCurrentProcess().PeakWorkingSet64 / 1048576.0, 1)} MB");
         Console.WriteLine();

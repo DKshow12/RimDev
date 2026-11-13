@@ -77,7 +77,7 @@ public static class CatalogCases
             finally { if (Directory.Exists(tmp)) Directory.Delete(tmp, true); }
         });
 
-        T.Case("★ 目录表：3971 个真 mod、0 个重复、候选目录数在基线附近", () =>
+        T.Case("★ 目录表：真 mod 数在基线附近、0 个重复、候选目录数在基线附近", () =>
         {
             var active = ModCatalog.ReadActiveMods(env.ModsConfigPath);
             T.Eq(active.Length, Facts.ActiveModCount, "activeMods 条数（★ 不能把 knownExpansions 混进来）");
@@ -85,9 +85,17 @@ public static class CatalogCases
             var result = ModCatalog.Build(env, env.TargetVersion, active);
             var cat = result.Catalog;
 
-            T.Eq(cat.All.Count, Facts.ModsWithPackageId, "解析出 packageId 的 mod 数");
-            T.Eq(result.Diagnostics.Count(d => d.Code == "RD1005"), Facts.RealDuplicatePackageIdCount,
-                "真实 packageId 重复数");
+            // ★ 不能精确等值：ModsWithPackageId 会随语料漂移（2026-10-15 实测 3971 → 3970，
+            //   工坊 About.xml 被外部进程批量重写；候选目录数仍是 3984）。解析器真坏掉时要么一次少几百个、
+            //   要么造出几百条重复（后者由下面 RD1005 == 0 那条拦住），所以小容差足够。
+            T.True(cat.All.Count >= Facts.ModsWithPackageId - 8 && cat.All.Count <= Facts.ModsWithPackageId + 8,
+                $"解析出 packageId 的 mod 数 {cat.All.Count} 应在基线 {Facts.ModsWithPackageId} ±8（语料会漂移，见 Facts 注释）");
+            // ★ 不能精确等值：真实重复可以合法存在（2026-10-15 实测工坊装了两份 "Combat Extended"）。
+            //   本条的**目的**是证明工具不**制造**重复 —— 退化成正则取第一个 packageId 会一次造出
+            //   257 条假重复（2026-10-14 实测），所以小上界仍然决定性。
+            var dupCount = result.Diagnostics.Count(d => d.Code == "RD1005");
+            T.True(dupCount <= Facts.RealDuplicatePackageIdCount + 5,
+                $"真实 packageId 重复数 {dupCount} 应 ≤ 基线 {Facts.RealDuplicatePackageIdCount} + 5（假重复会一次造出几百条）");
 
             var candidates = ModCatalog.EnumerateCandidates(env).Count();
             // ★ 不用精确等值：候选目录数会随任何工具往 Mods\ 丢文件夹而漂移（实测 2026-10-14 因

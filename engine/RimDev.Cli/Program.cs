@@ -1,10 +1,27 @@
-using RimDev.Core;
+using RimDev.Cli.Commands;
 
-if (args.Length > 0 && args[0] == "--version")
+if (args.Length == 0)
 {
-    Console.WriteLine(Placeholder.ToolName + " 0.0.0");
+    Console.Error.WriteLine("usage: rimdev <env|api|name> [options]");
+    return 3;
+}
+
+return args[0] switch
+{
+    "env" => EnvCommand.Run(args),
+    "--version" => PrintVersion(),
+    _ => Unknown(args[0])
+};
+
+static int PrintVersion()
+{
+    Console.WriteLine("rimdev 0.1.0");
     return 0;
 }
 
-Console.Error.WriteLine("usage: rimdev <env|api|name> [options]");
-return 3;
+static int Unknown(string cmd)
+{
+    Console.Error.WriteLine($"未知命令: {cmd}");
+    Console.Error.WriteLine("usage: rimdev <env|api|name> [options]");
+    return 3;
+}

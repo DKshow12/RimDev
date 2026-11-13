@@ -139,6 +139,28 @@ public static class CheckCases
                 (regressed.Count > 0 ? "（其中已知假阳回归：" + string.Join(", ", regressed) + "）" : ""));
         });
 
+        T.Case("★ 防假阳③：active 全集上 RD4001 与 RD4005 都必须为 0（改前 126 + 12）", () =>
+        {
+            // 本用例就是 Task 7b 的核心判据的单元版：这两族错误改前 100% 落在原版/DLC/Anomaly 内容上，
+            // 根因是字段表用单次 GetFields 建、看不见基类 private 字段（详见 FieldReflection 类注释）。
+            // ★ 故意写成【等值 0】而不是「不报原版」「要 < 10」之类：任何放宽都会把假阳重新放回来。
+            var rd4001 = diagsFull.Where(d => d.Code == Codes.FieldNotFound).ToList();
+            var rd4005 = diagsFull.Where(d => d.Code == Codes.CaseMismatch).ToList();
+            Console.WriteLine($"       [防假阳③] active 全集：RD4001={rd4001.Count} / RD4005={rd4005.Count} / " +
+                $"诊断总数={diagsFull.Count}（改前 126 + 12）");
+            foreach (var d in rd4001.Take(20))
+                Console.WriteLine($"         RD4001: {d.DefType}|{d.DefName} {d.Message} @{Path.GetFileName(d.FileAbs)}:{d.Line}");
+            foreach (var d in rd4005.Take(20))
+                Console.WriteLine($"         RD4005: {d.DefType}|{d.DefName} {d.Message} @{Path.GetFileName(d.FileAbs)}:{d.Line}");
+
+            T.Eq(rd4001.Count, 0, "RD4001 必须为 0（改前 126 条全在原版内容上；非 0 即字段表又看不见基类 private 字段）" +
+                System.Environment.NewLine + string.Join(System.Environment.NewLine,
+                    rd4001.Take(10).Select(d => $"   [{d.Code}] {d.DefType}|{d.DefName} {d.Message} @{d.FileAbs}:{d.Line}")));
+            T.Eq(rd4005.Count, 0, "RD4005 必须为 0（改前 12 条全在原版内容上）" +
+                System.Environment.NewLine + string.Join(System.Environment.NewLine,
+                    rd4005.Take(10).Select(d => $"   [{d.Code}] {d.DefType}|{d.DefName} {d.Message} @{d.FileAbs}:{d.Line}")));
+        });
+
         // ★ Task 6c 的合成 def 最小运行器：只喂 DefIndex.Build 出来的 def，不碰磁盘。
         List<Diagnostic> RunSynthetic(params RawDef[] defs)
         {
@@ -289,6 +311,14 @@ public static class CheckCases
             T.True(v.Exists, "TF_ThreatHive 应在 active 索引里存在（CLI：name check TF_ThreatHive --kind def --index → exit=0）");
             T.Eq(v.Kind, NameKind.DefName, "命中时的 Kind");
             T.Eq(v.Diagnostic.Severity, Severity.Info, "命中时应是 Info（不得报 Error）");
+
+            // ★ Task 7b Step 5（主理人裁定）：命中时必须列出【全部声明】，不能只报 ByDefName[...][0]。
+            //   TF_ThreatHive 有【两处】合法声明（ThingDef 与 PawnKindDef），两种 DefType 都出现在消息里才算合格。
+            var declCount = idx.ByDefName["TF_ThreatHive"].Count;
+            T.Eq(declCount, 2, "TF_ThreatHive 在 active 索引里的声明数（ThingDef + PawnKindDef）");
+            T.Contains(v.Diagnostic.Message, "ThingDef", "消息里必须出现 ThingDef 那处声明");
+            T.Contains(v.Diagnostic.Message, "PawnKindDef", "消息里必须出现 PawnKindDef 那处声明");
+            T.Contains(v.Diagnostic.Message, $"共 {declCount} 处声明", "消息必须报出声明数量（与索引真值一致）");
         });
 
         T.Case("★ Def 名未命中（TF_ThreatHiveX）：Error + 候选必须含真名", () =>

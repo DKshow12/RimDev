@@ -26,10 +26,22 @@ public sealed record MemberHit(
 /// </summary>
 public sealed class MemberInfoIndex
 {
-    // ★ 字段不含 Static（实测校准）：ThingDef public=266 / 含非公开（无 Static）=275 / 含 Static=282。
-    //   RimWorld 的 XML 反序列化只写实例字段，静态字段永远不是 XML 目标；
-    //   含 Static 会让 AllFieldCount 变成 282，与锚点 275 不符，且语义上是错的。
-    private const BindingFlags FieldFlags =
+    // ★ 字段表见 FieldReflection.FieldsByName（单一真源）。
+    //   为什么必须聚合基类：.NET 单次 GetFields(Public|NonPublic|Instance) 取值 275 对 ThingDef 成立，
+    //   但它**不返回基类的 private 字段**，而 RimWorld 的 XML 反序列化看得见它们。实证：
+    //     · RimWorld.StyleItemDef.category 是 private；单次 GetFields 在 BeardDef/HairDef 上找不到它，
+    //       可原版 Core\Defs\BeardDefs\BeardDefs.xml:8-10 真的写 <category>Minimal</category>（归档日志零报错）。
+    //     · ThingDef 沿 BaseType 走，旧表少收的恰好 1 个是 Verse.BuildableDef.placeWorkersInstantiatedInt（private）。
+    //   不聚合 = 官方内容上 126 条 RD4001 + 12 条 RD4005 假阳。这是【把表建对】，不是放宽判据。
+    //
+    //   实测锚点（2026-10-14，第 2 期 Task 7b）：ThingDef public=266（不变）/ AllFieldCount=276（改前 275）。
+    //   ★ 276 这个数不是「放宽」来的：PublicFieldCount 仍取 GetFields(Public|Instance).Length（公开字段本来
+    //     就会被继承，所以 266 必须不变）；AllFieldCount 现在 = 去重后的字段名数（含基类 private）。
+    //   语义边界：字段表【不含 Static】—— XML 反序列化只写实例字段，静态字段永远不是 XML 目标。
+
+    // 属性枚举的标志（字段已改走 FieldReflection，不再用这个常量）。
+    // 属性不做基类 private 聚合：XML 只从字段读，属性仅供规则包与候选建议用。
+    private const BindingFlags PropertyFlags =
         BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
 
     // ★ 方法枚举必须一次 GetMethods、不能逐层 DeclaredOnly 累加：
@@ -46,14 +58,16 @@ public sealed class MemberInfoIndex
     public MemberInfoIndex(Type type)
     {
         _type = type;
-        _fields = new Dictionary<string, FieldInfo>(StringComparer.Ordinal);
+        // ★ 字段表 = 本类型 + 全部基类的实例字段（含 private），按元素名去重、最派生优先。
+        //   单一真源在 FieldReflection.FieldsByName —— 不要在这里改回单次 GetFields（那是 138 条假阳的根因）。
+        //   （FieldReflection 返回 IReadOnlyDictionary；这里拷贝成 Dictionary 只为保持 FieldNames 的既有类型
+        //   与 KeyCollection 语义不变，每个类型只建一次、随后由 ManagedAssemblyCatalog 缓存。）
+        _fields = new Dictionary<string, FieldInfo>(FieldReflection.FieldsByName(type), StringComparer.Ordinal);
+
         _properties = new Dictionary<string, PropertyInfo>(StringComparer.Ordinal);
         _methods = new Dictionary<string, List<MethodInfo>>(StringComparer.Ordinal);
 
-        foreach (var f in type.GetFields(FieldFlags))
-            _fields.TryAdd(f.Name, f);
-
-        foreach (var p in type.GetProperties(FieldFlags))
+        foreach (var p in type.GetProperties(PropertyFlags))
             _properties.TryAdd(p.Name, p);
 
         foreach (var m in type.GetMethods(MethodFlags))
@@ -68,7 +82,8 @@ public sealed class MemberInfoIndex
     public string FullName => _type.FullName ?? _type.Name;
     public string SimpleName => _type.Name;
     public int PublicFieldCount => _type.GetFields(BindingFlags.Public | BindingFlags.Instance).Length;
-    public int AllFieldCount => _type.GetFields(FieldFlags).Length;
+    /// <summary>字段表条数 = 去重后的字段名数（含基类 private 字段），恒等于 <see cref="FieldNames"/>.Count。</summary>
+    public int AllFieldCount => _fields.Count;
     public int PropertyCount => _type.GetProperties(BindingFlags.Public | BindingFlags.Instance).Length;
     public IReadOnlyCollection<string> FieldNames => _fields.Keys;
     public IReadOnlyCollection<string> PropertyNames => _properties.Keys;

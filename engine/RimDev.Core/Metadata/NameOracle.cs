@@ -136,7 +136,10 @@ public sealed class NameOracle
                     System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic |
                     System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Static;
 
-                var fi = t.GetField(name, f);
+                // ★ 字段表必须用单一真源 FieldReflection（同一盲区：.NET 的 GetField 不返回基类 private 字段，
+                //   而引擎的 XML 加载器看得见 —— 见 FieldReflection 类注释的三路证据）。
+                //   SearchFieldFlags 里含 Static，是为了保持这条搜索路径的既有搜索面不缩水。
+                var fi = FieldReflection.FindField(t, name, includeStaticFields: true);
                 if (fi is not null) { hits.Add($"{t.FullName} (Field {fi.FieldType.Name})"); if (hits.Count >= 12) break; continue; }
 
                 var pi = t.GetProperty(name, f);
@@ -180,7 +183,9 @@ public sealed class NameOracle
     ///
     /// ★ `defName` 的唯一性是【按 DefType】的：同一个 defName 可以合法地出现在多个 DefType 里
     ///   （实测本机 `TF_ThreatHive` 同时是 ThingDef 与 PawnKindDef，两行都非抽象）。
-    ///   本方法按约定的最小实现报【声明列表里的第一条】；它不表示该名字只此一处。
+    ///   命中时【列出全部声明】（数量 + 每处的 DefType / mod / file:line）—— 只报 ByDefName[...][0] 会让人
+    ///   以为「这个名字只有一处」（实测 TF_ThreatHive 有 ThingDef @ TF_ThreatMechs.xml:569 与
+    ///   PawnKindDef @ :630 两处合法声明）。见本文件 CheckDefName 内部注释。
     /// </summary>
     private NameVerdict CheckDefName(string name, RimDev.Core.Defs.DefIndex? defIndex)
     {
@@ -189,12 +194,24 @@ public sealed class NameOracle
 
         if (defIndex.IsDefNameTaken(name))
         {
-            var d = defIndex.ByDefName[name][0];
-            // 索引里 FileRelToMod 理论上总是有值；真为空时退回绝对路径，不要印出空括号
-            var rel = string.IsNullOrEmpty(d.FileRelToMod) ? d.FileAbs : d.FileRelToMod;
+            // ★ 主理人裁定（第 2 期 Task 7b Step 5）：命中时必须【列出全部声明】，不能只报 [0]。
+            //   理由：defName 的唯一性是【按 DefType】的（见本方法上方注释），所以同一个 defName 在多个
+            //   DefType 里各有一处声明是合法且常见的形态 —— 实测 TF_ThreatHive 同时是
+            //   ThingDef（TF_ThreatMechs.xml:569）与 PawnKindDef（:630）。只报首条会让人误以为只有一处。
+            var decls = defIndex.ByDefName[name];
+            var lines = decls.Select(x =>
+            {
+                // 索引里 FileRelToMod 理论上总是有值；真为空时退回绝对路径，不要印出空括号
+                var rel = string.IsNullOrEmpty(x.FileRelToMod) ? x.FileAbs : x.FileRelToMod;
+                return $"{x.DefType} @ {x.ModPackageId} ({rel}:{x.Line})";
+            }).ToList();
+            var message = decls.Count == 1
+                ? $"Def `{name}` 存在 → {lines[0]}"
+                : $"Def `{name}` 存在 → 共 {decls.Count} 处声明：" + string.Join("；", lines);
+
             return new NameVerdict(new Diagnostic(Codes.MetadataUnavailable, Severity.Info, Scope.Offline,
-                $"Def `{name}` 存在 → {d.DefType} @ {d.ModPackageId} （{rel}）",
-                TypeName: d.DefType, MemberName: name), NameKind.DefName, true);
+                message,
+                TypeName: decls[0].DefType, MemberName: name), NameKind.DefName, true);
         }
 
         var pool = defIndex.ByDefName.Keys;

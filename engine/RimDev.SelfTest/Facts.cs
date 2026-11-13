@@ -13,8 +13,19 @@ public static class Facts
     public const int ManagedDllCount = 108;
     public const int AssemblyCSharpTypeCount = 16157;
 
-    public const int ThingDefPublicFieldCount = 266;
-    public const int ThingDefAllFieldCount = 275;
+    public const int ThingDefPublicFieldCount = 266;   // 改字段表后必须保持不变（公开字段本就会被继承）
+    /// <summary>
+    /// ThingDef 的 AllFieldCount —— 【含基类 private 字段】的去重字段名数。
+    ///
+    /// ★ 锚点复测记录（2026-10-14，第 2 期 Task 7b）：**275 → 276**。
+    ///   原因不是放宽判据，而是字段表改成了沿 BaseType 逐层 DeclaredOnly 求并集：
+    ///   改前单次 GetFields(Public|NonPublic|Instance) 看不到基类 private 字段，
+    ///   而引擎的 XML 反序列化看得见（重灾区是 StyleItemDef.category 对 BeardDef/HairDef、
+    ///   CreepJoinerBaseDef.weight/minCombatPoints 对三个 CreepJoiner* 派生类型）。
+    ///   ThingDef 这条链上旧表少收的恰好 1 个 = Verse.BuildableDef.placeWorkersInstantiatedInt（private）。
+    ///   PublicFieldCount=266 必须【不变】（公开字段本来就会被 GetFields 继承）——见 MetadataCases。
+    /// </summary>
+    public const int ThingDefAllFieldCount = 276;
 
     public const int WorkshopModDirCount = 3967;
 

@@ -48,12 +48,18 @@ public static class Facts
     /// </summary>
     public const int ActiveModXmlFileCount = 1649;
     /// <summary>
-    /// 上述 1649 个文件的总字节数（实测 13,537,807 B / 12.91 MB）。
-    /// 与文件数一起构成更强的口径金丝雀：若 loadFolders 解析口径漂移
-    /// （例如把 Languages/DefInjected 也纳进来），文件数与字节数会同时偏离。
-    /// 旧注释里的「41.83 MB」出自同一份错误文件集，已作废。
+    /// 上述 1649 个文件的**总字节数量级**（2026-10-14 实测 13,537,807 B ≈ 12.91 MB）。
+    ///
+    /// ★ 用**区间**而不是精确等值：启用集合里包含 `ThreatFleet` —— 它正在被活跃开发
+    ///   （实测 2026-10-14 19:32 有另一个写入者在改它的 XML，同一断言先得 13,537,817、
+    ///   再得 13,539,209）。对**可变语料**做精确等值断言 = 假失败制造机，
+    ///   与已修掉的 `CandidateModDirCount` 是同一类错误。
+    ///
+    /// 区间的用途是**抓口径漂移**：若 loadFolders 解析把 Languages/DefInjected 也纳进来，
+    /// 字节数会直接跳到 ~41 MB，立刻出界（文件数金丝雀也会同时响）。
     /// </summary>
-    public const long ActiveModXmlTotalBytes = 13_537_807;
+    public const long ActiveModXmlTotalBytesMin = 12_000_000;
+    public const long ActiveModXmlTotalBytesMax = 20_000_000;
     /// <summary>全库 *\1.6\Defs\*.xml 的文件数。</summary>
     public const int AllLibraryDefFileCount = 32694;
     /// <summary>

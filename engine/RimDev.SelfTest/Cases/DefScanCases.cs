@@ -24,7 +24,10 @@ public static class DefScanCases
         {
             T.Eq(files.Count, Facts.ActiveModXmlFileCount, "XML 文件数");
             var totalBytes = files.Sum(f => new FileInfo(f.FileAbs).Length);
-            T.Eq(totalBytes, Facts.ActiveModXmlTotalBytes, "XML 总字节数");
+            // ★ 用区间而非精确等值：集合里有活跃开发的 ThreatFleet（见 Facts 注释）。
+            //   用途是抓口径漂移（Languages 混入会跳到 ~41 MB），不是抓内容增删。
+            T.True(totalBytes >= Facts.ActiveModXmlTotalBytesMin && totalBytes <= Facts.ActiveModXmlTotalBytesMax,
+                $"XML 总字节数 {totalBytes} 应在 {Facts.ActiveModXmlTotalBytesMin}..{Facts.ActiveModXmlTotalBytesMax} 之间");
         });
 
         T.Case("流式扫描全部文件、耗时可控、失败数为 0", () =>

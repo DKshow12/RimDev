@@ -8,6 +8,34 @@ public sealed class CheckRunner
     public CheckRunner Add(ICheck check) { _checks.Add(check); return this; }
 
     /// <summary>★ 排障开关：`RIMDEV_CHECK_TRACE=1` 时逐条规则打开始/耗时到 stderr（默认关闭，不产生任何输出）。</summary>
+
+    /// <summary>
+    /// ★ Task 17：慢规则阈值（ms）。超过就向 stderr 打一条耗时。
+    /// <para>为什么是 3 秒：本工具常规操作都在毫秒到几百毫秒级，
+    /// 超 3 秒就不是「慢一点」而是「不正常」，值得告诉用户。</para>
+    /// </summary>
+    public const int SlowRuleMs = 3000;
+
+    /// <summary>
+    /// Task 17：做「可能较慢」预告的 **def 数门槛**。
+    /// <para>实测：官方 6 包 14,084 def ⇒ RD2009 约 0.7 s；629 mod 100,236 def ⇒ 13.7 min。
+    /// 两者差 7 倍 def，却差 1,170 倍耗时（超线性：DOM 变大后单次 XPath 也变慢）。</para>
+    /// <para>50,000 作分界：下方（官方/小集合）不告知，上方才告知。</para>
+    /// </summary>
+    public const int SlowRuleDefThreshold = 50_000;
+
+    /// <summary>
+    /// ★ Task 17：已知会较慢的规则（开始前先告知用户）。
+    /// <para>实测依据（本机 629 mod / 16,607 def 文件 / 3,364 补丁文件 / 24,838 操作）：
+    /// RD2009 要在 100,236 节点的 DOM 上求值 2.4 万条 XPath ⇒ 13.7 分钟。</para>
+    /// <para>这不是 bug，是该规则的固有成本（Docs/10 §2.1 记过同一笔账）；
+    /// 本集合只用于「提前告知」，不改任何计算。</para>
+    /// </summary>
+    public static readonly IReadOnlySet<string> SlowRules = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "RD2009",   // 补丁层（PatchCheck）
+        "RD3001",   // 引用解析（ReferenceCheck）—— 实测 29 s
+    };
     private static readonly bool _trace =
         System.Environment.GetEnvironmentVariable("RIMDEV_CHECK_TRACE") == "1";
 
@@ -55,6 +83,16 @@ public sealed class CheckRunner
         var timings = new List<(string Id, long Ms)>(_checks.Count);
         foreach (var c in _checks)
         {
+            // ★ Task 17：只对【已知慢规则】做预告。
+            //   为什么不是每条都告：其余规则都在毫秒级，逐条打反而是噪音。
+            //   为什么要告：实测（本机 629 mod）RD2009 单条要 13.7 分钟，
+            //   用户看到的是「命令没反应」⇒ Ctrl+C 以为挂了。
+            //   只写 stderr：保住 --json 的 stdout 逐字节稳定。
+            //   只在**规模足够大**时告知：官方 6 包跑 RD2009 只要几百毫秒，
+            //   对它说「请等待」是误导（用户会以为真要等很久）。
+            //   判据用 def 数（实测：官方 14,084 ⇒ 约 0.7 s；629 mod 100,236 ⇒ 13.7 min）。
+            if (!_trace && SlowRules.Contains(c.Id) && ctx.Defs.Count >= SlowRuleDefThreshold)
+                Console.Error.WriteLine($"[check] {c.Id} 可能较慢（{ctx.Defs.Count} 个 def），请等待…");
             var t = System.Diagnostics.Stopwatch.StartNew();
             // ★ 排障用（默认关闭）：`RIMDEV_CHECK_TRACE=1` 时逐条规则打开始/耗时到 stderr。
             //   存在理由：某条规则**挂起**时，`run` 不返回、也没有任何输出，只看诊断结果无从归因。
@@ -68,6 +106,9 @@ public sealed class CheckRunner
             }
             t.Stop();
             if (trace) Console.Error.WriteLine($"[check] {c.Id} done {t.ElapsedMilliseconds} ms");
+            // ★ Task 17：慢规则事后补一条耗时（超阈值才打，避免刷屏）。
+            if (!_trace && t.ElapsedMilliseconds >= SlowRuleMs)
+                Console.Error.WriteLine($"[check] {c.Id} 耗时 {t.ElapsedMilliseconds / 1000.0:0.0} s（超 {SlowRuleMs / 1000.0:0} s 阈值）");
             timings.Add((c.Id, t.ElapsedMilliseconds));
         }
         LastCheckMs = timings;

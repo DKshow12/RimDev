@@ -52,6 +52,11 @@ if (args.Contains("--task9b-cases"))
 }
 // ★ 第 3 期 Task 9c：按需入口 `rimdev-selftest --task9c-cases`（只跑本 Task 的用例，约十秒 ——
 //   其中 index/files/check×2/sim 各一次真扫描）。
+if (args.Contains("--task20-cases"))
+{
+    T.RunFile("phase3-task20", Phase3Task20Cases.Run);
+    return T.Report();
+}
 if (args.Contains("--task19-cases"))
 {
     T.RunFile("phase3-task19", Phase3Task19Cases.Run);
@@ -190,5 +195,7 @@ T.RunFile("phase3-task17", Phase3Task17Cases.Run);
 T.RunFile("phase3-task18", Phase3Task18Cases.Run);
 // ★ 第 3 期 Task 19：按规则子集运行（--rules / --skip-rules）
 T.RunFile("phase3-task19", Phase3Task19Cases.Run);
+// ★ 第 3 期 Task 20：补丁失败的最后四种形态（未归类收尾 4 条）
+T.RunFile("phase3-task20", Phase3Task20Cases.Run);
 
 return T.Report();

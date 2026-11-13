@@ -13,7 +13,7 @@ namespace RimDev.Core.Logs;
 /// <item><b>版本号假阳性过滤</b>：日志里 <c>[1.5.2]</c> 这类会被正则误当成 packageId。</item>
 /// </list>
 ///
-/// ★ 为什么要移植而不是自己写：这 11 条是社区长期积累的**真实日志形态**，
+/// ★ 为什么要移植而不是自己写：这 11 条是社区长期积累的**真实日志形态**,
 ///   自己从零总结会漏掉不常见的写法（如 <c>Could not resolve reference to object with loadID</c>）。
 /// </summary>
 public static class LogDiagnosisRules
@@ -94,6 +94,42 @@ public static class LogDiagnosisRules
             @"to a field which does not exist:",
             "尝试设置一个不存在的字段（引擎已写出字段名与目标类型）。"
             + "常见原因：mod 针对旧版本写的字段名，或目标类型已改。与离线 RD4001 对应。"),
+        // ★ Task 20：Sequence 失败的**详情版**。引擎 `ToString()` 会打出内部状态：
+        //
+        //   Patch operation Verse.PatchOperationSequence(count=19,
+        //       lastFailedOperation=Verse.PatchOperationAdd(Defs/ThingDef[defName="D…
+        //
+        //   比「第 N 个失败」信息量更大：它直接告诉你 **哪一条**子操作失败
+        //   以及它的类型与 xpath。实测本机 2.4 MB 日志：3 条。
+        //
+        //   ★ Task 20b：**不能只认 `PatchOperationSequence` 这个类名**。
+        //   实测又遇到自定义子类同样带这个状态：
+        //     ModSettingsFramework.PatchOperationModOption(count=3, lastFailedOperation=...)
+        //   （那些子类自己也是容器，ToString() 沿用了基类格式）。
+        //   所以只认 `任意类名(count=N, lastFailedOperation=` 这个**形状**。
+        new Rule("patch_sequence_detail", DiagnosticCodes.LogPatchXpathNoMatch,
+            @"(?:PatchOperation\w+|[A-Za-z_][\w.]*PatchOperation\w*)\(count=\d+,\s*lastFailedOperation=",
+            "Sequence 失败。日志里的 lastFailedOperation 直接指出是哪一条子操作失败"
+            + "以及它的类型与 xpath（引擎 ToString() 的产物）。"),
+
+        // ★ Task 20：整份补丁文件被跳过（根元素不是 <Patch>）。
+        //   后果最重：**该文件里所有操作都没跑**，但游戏照跑。
+        new Rule("patch_document_rejected", DiagnosticCodes.LogPatchXpathNoMatch,
+            @"Unexpected document element in patch XML",
+            "补丁文件的根元素不是 <Patch> ⇒ **整份文件被跳过**（里面所有操作都没跑）。"
+            + "常见原因：把补丁写成了 <Defs> 根，或文件放错目录。"),
+
+        // ★ Task 20：单个 <Operation> 被跳过（子元素不是 <Operation>）。
+        new Rule("patch_operation_rejected", DiagnosticCodes.LogPatchXpathNoMatch,
+            @"Unexpected element in patch XML",
+            "补丁文件的一级子元素不是 <Operation> ⇒ 该操作被跳过。"),
+
+        // ★ Task 20：直接用了基类 PatchOperation（缺 Class=）⇒ 必然失败。
+        //   对应我们的 RD2014 missingClass（离线）。
+        new Rule("patch_base_class_used", DiagnosticCodes.LogPatchXpathNoMatch,
+            @"Attempted to use PatchOperation directly",
+            "<Operation> 缺了 Class= 属性 ⇒ 引擎回落到基类 Verse.PatchOperation，"
+            + "其 ApplyWorker 固定报错并返回 false ⇒ **该操作必然失败**。与离线 RD2014 对应。"),
         new Rule("patch_sequence_error", DiagnosticCodes.LogPatchXpathNoMatch,
             @"PatchOperationSequence:\s*Error in the operation at position=\d+",
             "Sequence 里第 N 个子操作失败，后续兄弟被跳过。"

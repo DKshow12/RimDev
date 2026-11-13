@@ -171,7 +171,10 @@ public sealed class FieldNameCheck : ICheck
                             Evidence: new Dictionary<string, string>
                             {
                                 ["suppressedBy"] = suppressedBy,
-                                ["suppressedDetail"] = suppressedDetail,
+                                // ★ 第 3 期 Task 3 修掉 CS8601（基线构建里有 1 条警告，与本 Task 的交付无关）：
+                                //   suppressedDetail 声明为 string?，但能走到这里的两个分支都给它赋了非 null 值，
+                                //   `?? ""` 是纯消除可空警告，不改变任何行为。
+                                ["suppressedDetail"] = suppressedDetail ?? "",
                                 ["defTypeFullName"] = type.FullName ?? type.Name,
                                 ["validatedTypeName"] = typeName,
                                 ["resolutionSource"] = d.ClassAttr is null ? "elementName" : "ClassAttribute"

@@ -14,4 +14,6 @@ Phase3Task2Cases.Run();
 Phase3Task2bCases.Run();
 // ★ 第 3 期 Task 2c：DoFieldSearch 的另外三条分支（别名 / [Unsaved] / 抑制）与两条回归钉子
 Phase3Task2cCases.Run();
+// ★ 第 3 期 Task 3：mod 加载顺序 + 文件夹优先级 + 遮蔽（RD2025/RD2026）+ 顺序一致性（RD2011）
+Phase3Task3Cases.Run();
 return T.Report();

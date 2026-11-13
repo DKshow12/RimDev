@@ -61,6 +61,19 @@ public static class Codes
     public const string DefNameDuplicate = "RD2004";
     public const string ParentNotFound = "RD2005";
     public const string InheritanceCycle = "RD2006";
+    /// <summary>
+    /// <c>loadAfter</c> / <c>loadBefore</c> 与 <c>activeMods</c> 的实际顺序矛盾（第 3 期 Task 3）。
+    ///
+    /// ★ 码号预检（2026-10-14，任务书 §2.4 特别点名）：本常量在本文件里原本**不存在**，
+    ///   而任务书说「RD2011 早已被分配为 loadAfter/loadBefore 与启用顺序矛盾（info）」。
+    ///   两处证据合起来才是完整口径：`Docs\01 §7` 的 RD2xxx 码表把它列为 info，
+    ///   但代码里一直没有发射点、也没有常量。本次按码表补上常量与发射点，**没有新建任何码号**。
+    ///   同时任务书提到的 RD2027 确实不存在（码表与本文件都没有），不予创建。
+    ///
+    /// 级别恒为 <b>Info</b>：引擎会为 <c>loadAfter</c> 做排序，声明与实际顺序不一致多数情形下无害；
+    /// 报成 error 会让使用者直接关掉整份报告（Task 3 Step 7 专门要求断言「绝不是 error」）。
+    /// </summary>
+    public const string LoadOrderViolation = "RD2011";
     public const string RootNotDefs = "RD2013";
     public const string UnknownDefType = "RD2017";
 

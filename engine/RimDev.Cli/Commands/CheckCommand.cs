@@ -53,6 +53,8 @@ public static class CheckCommand
             return 3;
         }
         var onlyOfficial = args.Contains("--only-official");
+        // ★ 第 3 期 Task 3：`--shadowing` = 只看遮蔽/顺序族（RD2011 / RD2025 / RD2026）。
+        var shadowingOnly = args.Contains("--shadowing");
         // ★ 预检修正 ③：未知取值/缺值必须报参数错（退出码 3），不能静默降级为 info。
         var sevArg = Option(args, "--severity")?.ToLowerInvariant();
         Severity minSeverity;
@@ -74,6 +76,10 @@ public static class CheckCommand
 
         var active = ModCatalog.ReadActiveMods(env.ModsConfigPath);
         var cat = ModCatalog.Build(env, env.TargetVersion, active).Catalog;
+
+        // ★ 第 3 期 Task 3：引擎语义的加载顺序（Core → knownExpansions → activeMods）。
+        //   RD2011 用它比较 loadAfter/loadBefore；遮蔽胜者判定用 RankFor(mods)（= 本次扫描子集内的序位）。
+        var loadOrder = LoadOrder.Build(env, cat, active, LoadOrder.ReadKnownExpansions(env.ModsConfigPath));
 
         // 目标 mod：显式参数 > 工作区里含 Source\*.csproj 的目录 > 报错（只在 Target scope 下需要）
         ModInfo? target = null;
@@ -115,10 +121,15 @@ public static class CheckCommand
             mods.Select(m => (m.PackageId, m.RootPath, (IReadOnlyList<string>)m.LoadFolders)));
         var scan = DefScanner.Scan(files);
         var idx = DefIndex.Build(scan.Defs);
-        var ctx = new CheckContext(idx, scan.Files, cat, scan.Defs, targetFilter);
+        var ctx = new CheckContext(idx, scan.Files, cat, scan.Defs, targetFilter,
+            LoadOrder: loadOrder, ModRank: loadOrder.RankFor(mods));
 
         var diags = CheckRunner.Default().Run(ctx)
             .Where(d => d.Severity >= minSeverity)
+            // ★ 第 3 期 Task 3：`--shadowing` 只保留「遮蔽 / 加载顺序」族（RD2011 / RD2025 / RD2026）。
+            //   默认（不加开关）这族的诊断也会照常出现 —— 开关是**聚焦**而不是「打开」：
+            //   否则「RD2025/RD2026 到底报了多少条」就取决于有没有记得加开关，成了假 0。
+            .Where(d => !shadowingOnly || IsShadowingCode(d.Code))
             .ToList();
         sw.Stop();
 
@@ -140,6 +151,7 @@ public static class CheckCommand
                 scope = ScopeName(scope),
                 scopeExplanation = ScopeExplanation(scope),
                 onlyOfficial,
+                shadowingOnly,
                 target = targetFilter ?? "(all in scope)",
                 scanned = new { mods = mods.Count, xmlFiles = files.Count, defs = idx.TotalDefs },
                 summary,
@@ -205,6 +217,10 @@ public static class CheckCommand
     /// <summary>给人看的解释（转发）。</summary>
     public static string ScopeExplanation(CheckScope scope) => CheckScopeSelector.Explanation(scope);
 
+    /// <summary>「遮蔽/加载顺序」族的码号 —— 与 <c>--shadowing</c> 开关共用同一处定义（避免两处分叉）。</summary>
+    private static bool IsShadowingCode(string code) =>
+        code is Codes.DefShadowed or Codes.DefDuplicateWithinMod or Codes.LoadOrderViolation;
+
     private static void PrintHelp()
     {
         Console.WriteLine("rimdev check [<mod>] [options]");
@@ -219,6 +235,7 @@ public static class CheckCommand
         Console.WriteLine();
         Console.WriteLine("其它选项：");
         Console.WriteLine("  --only-official        只保留官方 6 个包（Data\\Core + 5 个 DLC）；与上面任一 scope 组合");
+        Console.WriteLine("  --shadowing            只保留「遮蔽/加载顺序」族（RD2011 / RD2025 / RD2026）；默认不开也已经包含它们");
         Console.WriteLine("  --severity <级别>      error | warning | info（默认 info）。未知或缺值 → 退出码 3，不静默降级");
         Console.WriteLine("  --json                 机器可读输出（含 scope / summary / 每条诊断的 cause 与 location）");
         Console.WriteLine("  --help, -h             打印本帮助（退出码 0）");

@@ -18,6 +18,10 @@ public sealed class CheckRunner
             .Add(new CommentDashCheck())
             .Add(new DuplicateDefNameCheck())
             .Add(new ParentChainCheck())
+            // ★ 第 3 期 Task 3：遮蔽（RD2025/RD2026）与 loadAfter/loadBefore 顺序一致性（RD2011）。
+            //   放在 ParentChainCheck 之后：它不依赖继承链，但同一份索引上跑完更省一次遍历（ctx 是共享的）。
+            //   级别：RD2026=error / RD2025=info / RD2011=info（详见 ShadowingCheck 类注释）。
+            .Add(new ShadowingCheck())
             .Add(new FieldNameCheck());
     }
 

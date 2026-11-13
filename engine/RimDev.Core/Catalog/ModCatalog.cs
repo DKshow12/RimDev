@@ -32,6 +32,22 @@ public sealed class ModCatalog
 
     public IReadOnlyList<ModInfo> All { get; }
     public IReadOnlyList<ModInfo> Active { get; }
+
+    /// <summary>
+    /// 由既有 <see cref="ModInfo"/> 列表构造目录表（**不扫盘**）。
+    ///
+    /// ★ 存在意义：自测要造「合成 mod」来钉住遮蔽/顺序规则（RD2011/RD2025/RD2026）时，
+    ///   合成目录不可能出现真实环境里 —— 没有它就只能对一个临时目录树跑 <see cref="Build"/>，
+    ///   而那会把工坊 3967 个 mod 一起扫进去（>3 秒/次）。生产路径一律走 <see cref="Build"/>。
+    /// </summary>
+    public static ModCatalog FromMods(IEnumerable<ModInfo> mods)
+    {
+        var all = mods.ToList();
+        var byPkg = new Dictionary<string, ModInfo>(StringComparer.OrdinalIgnoreCase);
+        foreach (var m in all) byPkg.TryAdd(m.PackageId, m);
+        return new ModCatalog(all, all.Where(m => m.IsActive).ToList(), byPkg);
+    }
+
     public bool TryGet(string packageId, out ModInfo mod) => _byPackageId.TryGetValue(packageId, out mod!);
     public ModInfo? Get(string packageId) => _byPackageId.GetValueOrDefault(packageId);
 

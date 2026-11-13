@@ -2,7 +2,7 @@ using RimDev.Cli.Commands;
 
 if (args.Length == 0)
 {
-    Console.Error.WriteLine("usage: rimdev <env|api|name|index|check|files> [options]（`rimdev check --help` 看 scan scope 语义）");
+    Console.Error.WriteLine("usage: rimdev <env|api|name|index|check|files|order> [options]（`rimdev check --help` 看 scan scope 语义）");
     return 3;
 }
 
@@ -13,6 +13,8 @@ return args[0] switch
     "index" => IndexCommand.Run(args),
     "files" => FilesCommand.Run(args),
     "check" => CheckCommand.Run(args),
+    // ★ 第 3 期 Task 3：mod 加载顺序 + 每个 mod 的文件夹优先级
+    "order" => OrderCommand.Run(args),
     "name" => NameCommand.Run(args),
     "--version" => PrintVersion(),
     _ => Unknown(args[0])
@@ -27,6 +29,6 @@ static int PrintVersion()
 static int Unknown(string cmd)
 {
     Console.Error.WriteLine($"未知命令: {cmd}");
-    Console.Error.WriteLine("usage: rimdev <env|api|name|index|check|files> [options]（`rimdev check --help` 看 scan scope 语义）");
+    Console.Error.WriteLine("usage: rimdev <env|api|name|index|check|files|order> [options]（`rimdev check --help` 看 scan scope 语义）");
     return 3;
 }

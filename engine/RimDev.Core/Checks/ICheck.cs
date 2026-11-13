@@ -21,7 +21,14 @@ public sealed record CheckContext(
     IReadOnlyList<DefFileResult> Files,
     ModCatalog Catalog,
     IReadOnlyList<RawDef> Defs,
-    string? TargetModPackageId);
+    string? TargetModPackageId,
+    // ★ 第 3 期 Task 3 追加（加在末尾且可空 = 向后兼容：现有 5 个位置参数的构造调用全部不受影响）：
+    //   LoadOrder = 引擎语义的 mod 加载顺序（Core → knownExpansions → activeMods），RD2011 的判据；
+    //   ModRank   = **本次扫描子集**里每个 packageId 的序位（--scope all / --only-official 会缩小集合），
+    //               遮蔽胜者判定键 (modLoadOrder, folderIndex) 用的就是它。
+    //   两者为 null 时 ShadowingCheck 会退化为「按目录表顺序」，而不是静默失效。
+    LoadOrder? LoadOrder = null,
+    IReadOnlyDictionary<string, int>? ModRank = null);
 
 public interface ICheck
 {

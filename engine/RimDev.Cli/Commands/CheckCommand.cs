@@ -287,8 +287,26 @@ public static class CheckCommand
         Console.WriteLine($"scope           {ScopeName(scope)}   （{ScopeExplanation(scope)}）");
         Console.WriteLine($"目标            {(targetFilter is null ? "(scope 内全部 mod)" : target!.ShortName + " (" + targetFilter + ")")}");
         // 扫描口径必须写明：Target scope 下永远是【全集】扫描，单目标时只是报告被过滤（避免「扫了 1 个 mod」的误读）
+        // ★ Task 21：`--only-official` + target 作用域 是**必然为 0** 的组合（除非目标
+        //   mod 本身就是官方 6 包之一）。不提就会被读成「官方没问题」——那是假 0。
+        if (onlyOfficial && targetFilter is not null
+            && !mods.Any(m => m.Source == ModSource.Official
+                              && string.Equals(m.PackageId, targetFilter, StringComparison.OrdinalIgnoreCase)))
+        {
+            Console.WriteLine($"注意            目标 mod {targetFilter} 不属于官方 6 包，");
+            Console.WriteLine($"                与 --only-official 交集为空 ⇒ 下面的 0 条**不能**当作「官方没问题」；");
+            Console.WriteLine($"                看官方基线请用 `rimdev check --scope active --only-official`。");
+        }
+
+        // ★ Task 21：两层信息都要原样标出来，否则会读成相反的东西：
+        //   · 带 targetFilter 时写「全集扫描」—— 但若同时 --only-official，
+        //     扫描集已被缩到官方 6 包，再写「全集」就是错的。
+        //   · 带 --only-official 时必须标出来，否则「6 个 mod」会被读成「本机只有 6 个 mod」。
         Console.WriteLine($"扫描            {mods.Count} 个 mod / {files.Count} 个 XML / {idx.TotalDefs} 个 def"
-                          + (targetFilter is not null ? "   （全集扫描；报告按目标过滤）" : ""));
+                          + (onlyOfficial ? "   [限官方 6 包]" : "")
+                          + (targetFilter is not null
+                              ? (onlyOfficial ? "（官方内全集扫描；报告按目标过滤）" : "（全集扫描；报告按目标过滤）")
+                              : ""));
         Console.WriteLine($"结果            error {summary.error}   warning {summary.warning}   info {summary.info}");
         // ★ Task 19：规则子集必须可见 —— 否则「只跑了 2 条规则」的结果
         //   会被读成「其他 7 条规则没问题」（那是假 0，项目最忌的一类）。

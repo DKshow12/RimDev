@@ -35,6 +35,8 @@ public static class SimCommand
     public static readonly CommandFlagSet Flags = new("sim", PrintHelp,
         new FlagSpec("--scope", true, "target|active|all"),
         new FlagSpec("--all"),
+        // ★ Task 21：与 check 对齐 —— 快速看官方基线时不该扫 629 个 mod。
+        new FlagSpec("--only-official"),
         new FlagSpec("--json"),
         new FlagSpec("--timings"),
         new FlagSpec("--parallel", true, "N"));
@@ -85,6 +87,14 @@ public static class SimCommand
         }
 
         var mods = scope == CheckScope.All ? cat.All.ToList() : cat.Active.ToList();
+        // ★ Task 21：与 check 同一口径 —— 只看官方 6 包（Core + 5 DLC）。
+        //   为什么需要：官方基线是跨引擎版本最稳的锤子（Docs/10 §4.2），
+        //   而 629 mod 下 sim 要跑 14 分钟 —— 想对一下官方基线就得陪跑全部 mod。
+        if (args.Contains("--only-official"))
+            mods = mods.Where(m => m.Source == ModSource.Official).ToList();
+        // ★ Task 21：与 check 同一口径 —— 只看官方 6 包（Core + 5 DLC）。
+        //   为什么需要：官方基线是跨引擎版本最稳的锤子（Docs/10 §4.2），
+        //   而 629 mod 下 sim 要跑 14 分钟。
         var targetFilter = target?.PackageId;
         if (scope == CheckScope.Target && target is null)
         {
@@ -345,7 +355,10 @@ public static class SimCommand
 
         // ── 人读输出（含分阶段计时） ─────────────────────────────────────────────────
         Console.WriteLine($"scope           {CheckScopeSelector.Name(scope)}（{SimScopeExplanation(scope)}）"
-                          + (modArg is not null ? $"   mod={modArg}" : ""));
+                          + (modArg is not null ? $"   mod={modArg}" : "")
+                          // ★ Task 21：加了 --only-official 就必须标出来 ——
+                          //   否则「scope active · 扫描 6 个 mod」会被读成「只有 6 个模组启用了」。
+                          + (args.Contains("--only-official") ? "   [限官方 6 包]" : ""));
         // ★ 刻意**不用** CheckScopeSelector.Explanation：那句话写的是 `check` 的别名语义（"--all 是它的兼容别名"），
         //   而 sim 的 `--all` 是**全库** —— 照抄会把使用者直接引到错的语义上。
         Console.WriteLine($"扫描            {mods.Count} 个 mod / {files.Count} 个 XML / {idx.TotalDefs} 个 def"

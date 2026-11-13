@@ -63,6 +63,42 @@ public static class LogDiagnosisRules
         //   它与我们的 RD2009（离线预测「补丁打空」）完全对应 —— 真机侧实证。
         //   引擎原文：`Verse.PatchOperationAdd(xpath="..."): Failed to find a node with the given xpath`
         //   实测：本机 2.4 MB 日志里这个形态出现 62 次（Ratkin CE Patch 等）。
+        // ★ Task 16：同一事件的**另一种说法** —— 不同阶段报的。
+        //
+        //   阶段 A（ApplyPatches，引擎当场应用时）：
+        //     Verse.PatchOperationAdd(xpath="…"): Failed to find a node with the given xpath
+        //   阶段 B（ClearCachedPatches，启动末尾清缓存时）：
+        //     [Mod 显示名] Patch operation Verse.PatchOperationAdd(<xpath>) failed
+        //
+        // 两者同义（都是「补丁没打上」）。实测本机 2.4 MB 日志：
+        //   A 形态 19 条 / B 形态 **74 条**（只认 A 会漏掉 80%）。
+        //   B 形态反而**信息更全** —— 它带操作类型与完整 xpath，能直接定位。
+        //   ★ 实测又分三种子形态（本机真实日志），全部要认：
+        //     1. Patch operation Verse.PatchOperationAdd(<xpath>) failed     → 带括号
+        //     2. Patch operation CombatExtended.PatchOperationMakeGunCECompatible failed  → **不带括号**！
+        //     3. Patch operation …(<xpath 跨行>) failed               → xpath 含换行
+        //   所以正则里括号部分必须是可选的，且不能假设 xpath 单行。
+        new Rule("patch_operation_failed", DiagnosticCodes.LogPatchXpathNoMatch,
+            @"Patch operation \S+(?:\([^)]*\))?\s+failed",
+            "补丁失败（引擎在启动末尾 ClearCachedPatches 阶段报）。"
+            + "与 「Failed to find a node with the given xpath」同义，但带完整 xpath 与操作类型。"),
+
+        // ★ 第四种形态：嵌套 Sequence 里的子操作失败。
+        //   实测：`Verse.PatchOperationSequence: Error in the operation at position=2`
+        //   这正是我们 Task 12 在离线侧建模的「Sequence 首败中止」—— 真机侧实证。
+        // ★ 第五种：字段名错（与离线 RD4001 对应）。
+        //   实测原文：Tried to set a value (1) to a field which does not exist: 
+        //              MechFussionCore on ThingDefCountClass
+        //   比 "doesn't correspond to any field" 更具体 —— 它直接说出了字段名与目标类型。
+        new Rule("field_not_exist", DiagnosticCodes.LogXmlUnknownField,
+            @"to a field which does not exist:",
+            "尝试设置一个不存在的字段（引擎已写出字段名与目标类型）。"
+            + "常见原因：mod 针对旧版本写的字段名，或目标类型已改。与离线 RD4001 对应。"),
+        new Rule("patch_sequence_error", DiagnosticCodes.LogPatchXpathNoMatch,
+            @"PatchOperationSequence:\s*Error in the operation at position=\d+",
+            "Sequence 里第 N 个子操作失败，后续兄弟被跳过。"
+            + "与离线的「Sequence 首败中止」建模对应。"),
+
         new Rule("patch_xpath_no_match", DiagnosticCodes.LogPatchXpathNoMatch,
             @"Failed to find a node with the given xpath",
             "补丁的 xpath 在真机里匹配 0 个节点。常见原因：目标 defName 被改名、"

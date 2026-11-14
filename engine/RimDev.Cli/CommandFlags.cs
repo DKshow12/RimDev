@@ -130,6 +130,10 @@ public static class CommandFlags
         FilesCommand.Flags,
         CheckCommand.Flags,
         OrderCommand.Flags,
+        // ★ Task 28：依赖关系查询。
+        //   忘了这一行会静默退化成「未知命令」——
+        //   正是本次实测撞到的（分派写了、Sets 没登记）。
+        DepsCommand.Flags,
         SimCommand.Flags,
         LogCommand.Flags,
     };

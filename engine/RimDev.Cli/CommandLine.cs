@@ -30,7 +30,7 @@ public static class CommandLine
 
     /// <summary>用法一行（`--help` 与未知命令共用）。</summary>
     public const string Usage =
-        "usage: rimdev <env|api|name|index|check|files|order|sim|log> [options]（`rimdev check --help` / `rimdev sim --help` 看 scan scope 语义；`rimdev log --help` 看日志诊断）";
+        "usage: rimdev <env|api|name|index|check|files|order|deps|sim|log> [options]（`rimdev check --help` / `rimdev sim --help` 看 scan scope 语义；`rimdev log --help` 看日志诊断）";
 
     /// <summary>
     /// 唯一入口：解析全局开关 → 构造成唯一的环境解析结果 → 分发。
@@ -135,6 +135,10 @@ public static class CommandLine
             "check" => CheckCommand.Run(ctx),
             // ★ 第 3 期 Task 3：mod 加载顺序 + 每个 mod 的文件夹优先级
             "order" => OrderCommand.Run(ctx),
+            // ★ Task 28：依赖关系查询（正向/反向）。
+            //   数据一直在 ModInfo 里（Task 26 刚补齐 DependenciesByVersion），
+            //   但从未暴露 —— order 的输出里一个依赖字段都没有。
+            "deps" => DepsCommand.Run(ctx, ctx.Args.Skip(1).ToArray()),
             "name" => NameCommand.Run(ctx),
             // ★ 第 3 期 Task 6：加载结果摘要（有效 def / 遮蔽 / 悬空引用 / MayRequire / loader 边界）
             "sim" => SimCommand.Run(ctx),

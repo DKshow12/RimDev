@@ -62,6 +62,11 @@ if (args.Contains("--task26b-cases"))
     T.RunFile("phase3-task26b", Phase3Task26bCases.Run);
     return T.Report();
 }
+if (args.Contains("--task28-cases"))
+{
+    T.RunFile("phase3-task28", Phase3Task28Cases.Run);
+    return T.Report();
+}
 if (args.Contains("--task26-cases"))
 {
     T.RunFile("phase3-task26", Phase3Task26Cases.Run);
@@ -239,5 +244,7 @@ T.RunFile("phase3-task26", Phase3Task26Cases.Run);
 T.RunFile("phase3-task26b", Phase3Task26bCases.Run);
 // ★ Task 26c：端到端验证（真实语料的 2 条冲突必须报出来）
 T.RunFile("phase3-task26c", Phase3Task26cCases.Run);
+// ★ Task 28：deps 命令（依赖关系正/反向查询）
+T.RunFile("phase3-task28", Phase3Task28Cases.Run);
 
 return T.Report();

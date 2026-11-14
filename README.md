@@ -108,6 +108,25 @@ rimdev name check Gun_Revolver --kind def --index
 
 读的是**本机安装**的程序集，所以答案与当前游戏版本严格对应。
 
+### 5. 依赖关系查询
+
+```bash
+rimdev deps --mod brrainz.harmony            # 它依赖谁（0 个）
+rimdev deps --mod brrainz.harmony --reverse  # 谁依赖它（264 个）
+rimdev deps --mod somemod --version v1.7     # 只看 v1.7 版本块的依赖
+```
+
+两个最重要的问题一次问清：
+
+- **「我这个 mod 缺哪个前置」** —— 正向查询，且状态分四档：
+  `已启用` / `已启用（经备选名）` / `未启用` / `缺失`。
+  「磁盘上有但没启用」和「根本没装」修法完全不同，混在一起会让人白找。
+- **「我改了 X 的 def，谁受影响」** —— 反向查询，安全改动的前提。
+
+> 支持 `--scope all` 查未启用的工坊 mod，以及 `modDependenciesByVersion` 的**版本块**过滤
+> （实测 `Torann.ARimworldOfMagic` 有 6 个版本块：不带参数列 18 条，`--version v1.1` 只列 3 条，
+> 且 v1.1 与 v1.6 的内容不同 —— `jecrell.jecstools` 换成了 `zal.jecsliterwom`）。
+
 ---
 
 ## 快速开始
@@ -150,6 +169,7 @@ pwsh -File engine\publish.ps1     # 生成 dist\net10.0 与 dist\net8.0
 | `env` | 环境体检：布局 / 游戏根 / 程序集 / 日志位置 | 0.6 s |
 | `check` | 静态检查（XML / Def / 字段 / 补丁 / 引用） | **2.5 s**（官方 6 包）｜14 min（629 mod 全量） |
 | `order` | mod 加载顺序 + 未解析的 packageId | 2.7 s |
+| `deps` | **依赖关系查询**（正向/反向，含版本块） | 4.5 s |
 | `log` | Player.log 真机诊断 | 0.1 s / 2.3 MB |
 | `sim` | 加载结果摘要（有效 def / 遮蔽 / MayRequire） | 6.5 s（官方） |
 | `api` | 程序集类型/字段/方法查询 | 0.2 s |
